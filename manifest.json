@@ -3,7 +3,7 @@
   "name": "Email Archive Assistant",
   "version": "1.0",
   "description": "A machine learning-driven email archiving assistant for Thunderbird",
-  "author": "Your Name",
+  "author": "Andrea Clementi with Cursor, Claude-Sonnet-3.5, o1",
   "browser_specific_settings": {
     "gecko": {
       "id": "email-archive@example.com",
