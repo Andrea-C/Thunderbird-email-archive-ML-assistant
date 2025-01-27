@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Train Archive Model</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 16px;
+      min-width: 300px;
+    }
+    select, button {
+      margin: 8px 0;
+      padding: 8px;
+      width: 100%;
+    }
+    #status {
+      margin-top: 16px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .success { background: #e6ffe6; }
+    .error { background: #ffe6e6; }
+  </style>
+</head>
+<body>
+  <h2>Train Archive Model</h2>
+  <select id="accountSelect">
+    <option value="">Select an account...</option>
+  </select>
+  <button id="trainButton">Start Training</button>
+  <div id="status"></div>
+
+  <script src="train.js"></script>
+</body>
+</html> 

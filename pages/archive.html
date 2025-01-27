@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Email Archive Assistant</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 20px;
+    }
+    
+    select, button {
+      margin: 8px;
+      padding: 8px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    
+    th, td {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    th {
+      background-color: #f5f5f5;
+    }
+    
+    tr:hover {
+      background-color: #f9f9f9;
+    }
+    
+    .actions {
+      margin: 16px 8px;
+    }
+    
+    #status {
+      margin: 16px 8px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .success { background: #e6ffe6; }
+    .error { background: #ffe6e6; }
+  </style>
+</head>
+<body>
+  <h2>Email Archive Assistant</h2>
+  
+  <div>
+    <select id="accountSelect">
+      <option value="">Select an account...</option>
+    </select>
+  </div>
+  
+  <div class="actions">
+    <button id="classifyButton">Classify Selected</button>
+    <button id="moveButton" disabled>Move Selected</button>
+  </div>
+  
+  <div id="status"></div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll"></th>
+        <th>From</th>
+        <th>Subject</th>
+        <th>Date</th>
+        <th>Target Folder</th>
+      </tr>
+    </thead>
+    <tbody id="messageList">
+    </tbody>
+  </table>
+
+  <script src="archive.js"></script>
+</body>
+</html> 
