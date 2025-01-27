@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     accountSelect.appendChild(option);
   }
   
+  // Listen for progress updates
+  browser.runtime.onMessage.addListener((message) => {
+    if (message.type === 'training-progress') {
+      status.textContent = `Training in progress: ${message.progress}%`;
+      status.className = '';
+    }
+  });
+  
   trainButton.addEventListener('click', async () => {
     const accountId = accountSelect.value;
     if (!accountId) {
@@ -22,20 +30,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     try {
       trainButton.disabled = true;
-      status.textContent = 'Training in progress...';
+      accountSelect.disabled = true;
+      status.textContent = 'Analyzing folders...';
       status.className = '';
       
       const account = accounts.find(a => a.id === accountId);
-      await browser.runtime.getBackgroundPage()
+      const result = await browser.runtime.getBackgroundPage()
         .then(background => background.emailArchive.trainModel(account));
       
-      status.textContent = 'Training completed successfully!';
-      status.className = 'success';
+      if (result.success) {
+        status.textContent = `Training completed successfully! Processed ${result.messagesProcessed} messages.`;
+        status.className = 'success';
+      } else {
+        throw new Error('Training failed');
+      }
     } catch (error) {
       status.textContent = `Error: ${error.message}`;
       status.className = 'error';
     } finally {
       trainButton.disabled = false;
+      accountSelect.disabled = false;
     }
   });
 }); 

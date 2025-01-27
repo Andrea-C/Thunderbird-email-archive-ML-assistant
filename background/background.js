@@ -104,23 +104,78 @@ async function openArchiveTab() {
 
 // Training function
 async function trainModel(account) {
-  classifier = new NaiveBayesClassifier();
-  const folders = await browser.folders.getSubFolders(account);
-  
-  for (const folder of folders) {
-    if (isUserFolder(folder)) {
-      const messages = await browser.messages.list(folder);
-      for (const message of messages) {
-        const fullText = `${message.author} ${message.subject} ${message.body}`;
-        classifier.train(fullText, folder.path);
+  try {
+    classifier = new NaiveBayesClassifier();
+    const folders = await browser.folders.getSubFolders(account);
+    let totalMessages = 0;
+    let processedMessages = 0;
+    
+    // First, count total messages for progress tracking
+    for (const folder of folders) {
+      if (isUserFolder(folder)) {
+        const messages = await browser.messages.list(folder);
+        if (messages && Array.isArray(messages)) {
+          totalMessages += messages.length;
+        }
       }
     }
+    
+    if (totalMessages === 0) {
+      throw new Error("No messages found in user folders");
+    }
+    
+    // Now process messages
+    for (const folder of folders) {
+      if (isUserFolder(folder)) {
+        const messages = await browser.messages.list(folder);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages) {
+            try {
+              const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
+              classifier.train(fullText, folder.path);
+              processedMessages++;
+              
+              // Send progress update
+              browser.runtime.sendMessage({
+                type: 'training-progress',
+                progress: Math.round((processedMessages / totalMessages) * 100)
+              });
+            } catch (err) {
+              console.error('Error processing message:', err);
+            }
+          }
+        }
+      }
+    }
+    
+    if (processedMessages === 0) {
+      throw new Error("No messages could be processed");
+    }
+    
+    // Save trained model
+    await browser.storage.local.set({
+      [`model_${account.id}`]: JSON.stringify(classifier)
+    });
+    
+    // Also save the account ID in a list of trained accounts
+    const trainedAccounts = await browser.storage.local.get('trainedAccounts');
+    const accounts = trainedAccounts.trainedAccounts || [];
+    if (!accounts.includes(account.id)) {
+      accounts.push(account.id);
+      await browser.storage.local.set({ trainedAccounts: accounts });
+    }
+    
+    return { success: true, messagesProcessed: processedMessages };
+  } catch (error) {
+    console.error('Training error:', error);
+    throw error;
   }
-  
-  // Save trained model
-  await browser.storage.local.set({
-    [`model_${account.id}`]: JSON.stringify(classifier)
-  });
+}
+
+// Helper function to get trained accounts
+async function getTrainedAccounts() {
+  const data = await browser.storage.local.get('trainedAccounts');
+  return data.trainedAccounts || [];
 }
 
 // Helper function to check if folder is user-created
@@ -145,5 +200,6 @@ async function classifyMessage(message, accountId) {
 window.emailArchive = {
   trainModel,
   classifyMessage,
-  isUserFolder
+  isUserFolder,
+  getTrainedAccounts
 }; 

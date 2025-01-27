@@ -9,13 +9,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   const messageList = document.getElementById('messageList');
   const status = document.getElementById('status');
   
-  // Load accounts
+  // Load only trained accounts
   const accounts = await browser.accounts.list();
-  for (const account of accounts) {
+  const background = await browser.runtime.getBackgroundPage();
+  const trainedAccountIds = await background.emailArchive.getTrainedAccounts();
+  
+  const trainedAccounts = accounts.filter(account => trainedAccountIds.includes(account.id));
+  
+  if (trainedAccounts.length === 0) {
+    status.textContent = 'No trained accounts found. Please train a model first.';
+    status.className = 'error';
+    accountSelect.disabled = true;
+    classifyButton.disabled = true;
+    return;
+  }
+  
+  for (const account of trainedAccounts) {
     const option = document.createElement('option');
     option.value = account.id;
     option.textContent = account.name;
     accountSelect.appendChild(option);
+  }
+  
+  // Load messages for the first account automatically
+  if (trainedAccounts.length > 0) {
+    accountSelect.value = trainedAccounts[0].id;
+    currentAccount = trainedAccounts[0];
+    await loadInboxMessages();
   }
   
   // Account selection handler
@@ -23,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const accountId = accountSelect.value;
     if (!accountId) return;
     
-    currentAccount = accounts.find(a => a.id === accountId);
+    currentAccount = trainedAccounts.find(a => a.id === accountId);
     await loadInboxMessages();
   });
   
@@ -34,25 +54,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMoveButton();
   });
   
-  // Classify button handler
+  // Classify button handler - now classifies all messages
   classifyButton.addEventListener('click', async () => {
-    const checkboxes = messageList.querySelectorAll('input[type="checkbox"]:checked');
-    const selectedMessages = Array.from(checkboxes).map(cb => messages[cb.dataset.index]);
-    
-    if (selectedMessages.length === 0) {
-      status.textContent = 'Please select messages to classify';
-      status.className = 'error';
-      return;
-    }
-    
     try {
-      status.textContent = 'Classifying messages...';
+      status.textContent = 'Classifying all messages...';
       status.className = '';
       classifyButton.disabled = true;
       
       const background = await browser.runtime.getBackgroundPage();
       
-      for (const message of selectedMessages) {
+      for (const message of messages) {
         const targetFolder = await background.emailArchive.classifyMessage(message, currentAccount.id);
         const row = messageList.querySelector(`tr[data-message-id="${message.id}"]`);
         if (row) {
@@ -77,6 +88,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   moveButton.addEventListener('click', async () => {
     const checkboxes = messageList.querySelectorAll('input[type="checkbox"]:checked');
     const selectedRows = Array.from(checkboxes).map(cb => cb.closest('tr'));
+    
+    if (selectedRows.length === 0) {
+      status.textContent = 'Please select messages to move';
+      status.className = 'error';
+      return;
+    }
     
     try {
       status.textContent = 'Moving messages...';
@@ -114,14 +131,19 @@ async function loadInboxMessages() {
     const inbox = await browser.folders.getInboxFolder(currentAccount);
     messages = await browser.messages.list(inbox);
     
+    if (!messages || messages.length === 0) {
+      messageList.innerHTML = '<tr><td colspan="5">No messages in Inbox</td></tr>';
+      return;
+    }
+    
     messages.forEach((message, index) => {
       const row = document.createElement('tr');
       row.dataset.messageId = message.id;
       
       row.innerHTML = `
         <td><input type="checkbox" data-index="${index}"></td>
-        <td>${escapeHtml(message.author)}</td>
-        <td>${escapeHtml(message.subject)}</td>
+        <td>${escapeHtml(message.author || '')}</td>
+        <td>${escapeHtml(message.subject || '')}</td>
         <td>${new Date(message.date).toLocaleDateString()}</td>
         <td class="target-folder"></td>
       `;
@@ -136,6 +158,7 @@ async function loadInboxMessages() {
     });
   } catch (error) {
     console.error('Error loading messages:', error);
+    messageList.innerHTML = '<tr><td colspan="5">Error loading messages</td></tr>';
   }
 }
 
@@ -148,7 +171,7 @@ function updateMoveButton() {
 
 // Helper function to escape HTML
 function escapeHtml(unsafe) {
-  return unsafe
+  return (unsafe || '')
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
