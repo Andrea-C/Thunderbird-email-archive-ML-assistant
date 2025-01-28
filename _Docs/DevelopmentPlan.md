@@ -28,9 +28,9 @@ Below is a high-level, language-agnostic development plan for creating a Thunder
 
 ## 2. Core Architecture
 
-The extension can be divided into two main modules:
-1. **Model Training Module** (Tools menu → “Archive Model Training”)  
-2. **Email Archiving Module** (Tools menu → “E-mail archive”)
+The extension can be divided into Two main modules:
+1. **Model Training Module** (Tools menu → “Email Archive Assistant" → “Archive Model Training”)  
+2. **Email Archiving Module** (Tools menu → “Email Archive Assistant" → “E-mail archive”)
 
 They share some common subcomponents:
 
@@ -55,8 +55,8 @@ They share some common subcomponents:
    - For each included folder, gather message data:
      - From, To, CC, BCC (sender/recipient features)
      - Subject
-     - Body text (decide if partial or full text is used to limit data size)
-     - Ignore attachments  
+     - Body text (full text)
+     - Ignore attachments and images
    - The **target label** for each message is the folder path in which the message resides.
 
 4. **Feature Engineering**  
@@ -64,7 +64,7 @@ They share some common subcomponents:
      - Bag-of-words
      - TF-IDF
      - Word embeddings, etc.  
-   - Possibly create additional features from the message’s metadata (e.g. domain of sender, presence of certain keywords, etc.).
+   - Create additional features from the message’s metadata (e.g. domain of sender, presence of certain keywords, etc.).
 
 5. **Model Training**  
    - Pass the prepared dataset (features and labels) to the ML training pipeline.  
@@ -74,6 +74,47 @@ They share some common subcomponents:
 6. **Model Storage**  
    - Save the model file as `model_<email-address>` in the `models/` directory of the extension or a designated Thunderbird extension data area.  
    - Ensure you can retrieve this model later during the archiving step.
+
+
+### Traning page
+The training windows should be a tab page as the it is the classify page, not a simple dialog window, because we need more space to include more elements.
+
+The Training page should: 
+- permit the user to get access to the models created 
+- configure the training process
+- show the traning progress
+
+
+#### permit the user to get access to the models created
+- list all the traning models that have been created 
+- user can select a model and delete it
+
+#### configure the training process
+- the user select a mailbox
+- the module list all the folders in the hierarchical tree with a check box to select the folders
+- In the first run, all the folders are selected, but exclude the default folders (Inbox, Sent, Draft, Trash/Recycle Bin)
+- The modules check if there is a JSON file with a previous selection of folders that should be used in the training
+- the users can select/deselect the folders that should be used in the training
+- the selected/unselected folders are saved in a dedicated JSON file
+
+#### show the training process
+When the training process starts
+- A text box where the module write the number of folder processed and the number of total folder to process
+- A text box where the module write the number of messages processed and the number of total messagges to process in the current processed folder
+
+#### WARNING
+the mailboxes are sync with IMAP Protocol.
+Often the local replica of the folders, is not in sync and need times to be updated.
+So, when the training process is started, for each folder that is opened to read the e-mail messages, 
+- sync the folder
+- show the the sync completion state
+- wait the sync is completed
+- train the model with the messages of the folder
+
+
+
+
+
 
 ---
 
@@ -131,6 +172,8 @@ They share some common subcomponents:
      - Let user select the mailbox.
      - List user-created folders (check boxes or multi-select list).
      - Confirm to start training.
+     - A text box where the module write the number of folder processed and the number of total folder to process
+     - A text box where the module write the number of messages processed and the number of total messagges to process in the current processed folder
 2. **Archiving Tab/Window**  
    - A tab with:
      - Mailbox selection dropdown.
@@ -246,3 +289,45 @@ They share some common subcomponents:
 # Final Summary
 
 By structuring your Thunderbird extension into clear modules for data access, model training, and classification, you can create a maintainable and user-friendly tool that learns from users’ existing folder structures and helps them quickly archive Inbox messages. The development plan above provides a roadmap for designing the UI, data handling, ML pipeline, and integration with Thunderbird’s APIs in a way that is adaptable to any ML library or programming language you choose.
+
+
+
+
+---
+# updated documentation: 
+here are the features that have been added after the first development
+
+## Traning page
+The training windows should be a tab page as the it is the classify page, not a simple dialog window, because we need more space to include more elements.
+
+The Training page should: 
+- permit the user to get access to the models created 
+- configure the training process
+- show the traning progress
+
+
+### permit the user to get access to the models created
+- list all the traning models that have been created 
+- user can select a model and delete it
+
+### configure the training process
+- the user select a mailbox
+- the module list all the folders in the hierarchical tree with a check box to select the folders
+- In the first run, all the folders are selected, but exclude the default folders (Inbox, Sent, Draft, Trash/Recycle Bin)
+- The modules check if there is a JSON file with a previous selection of folders that should be used in the training
+- the users can select/deselect the folders that should be used in the training
+- the selected/unselected folders are saved in a dedicated JSON file
+
+### show the training process
+When the training process starts
+- A text box where the module write the number of folder processed and the number of total folder to process
+- A text box where the module write the number of messages processed and the number of total messagges to process in the current processed folder
+
+### WARNING
+the mailboxes are sync with IMAP Protocol.
+Often the local replica of the folders, is not in sync and need times to be updated.
+So, when the training process is started, for each folder that is opened to read the e-mail messages, 
+- sync the folder
+- show the the sync completion state
+- wait the sync is completed
+- train the model with the messages of the folder

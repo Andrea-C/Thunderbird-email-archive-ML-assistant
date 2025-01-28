@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Email Archive Assistant - Training</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 20px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+    }
+    
+    .sidebar {
+      border-right: 1px solid #ddd;
+      padding-right: 20px;
+    }
+    
+    .main-content {
+      padding-left: 20px;
+    }
+    
+    select, button {
+      margin: 8px 0;
+      padding: 8px;
+      width: 100%;
+    }
+    
+    .folder-tree {
+      margin: 20px 0;
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+    }
+    
+    .folder-item {
+      margin: 5px 0;
+      padding-left: 20px;
+    }
+    
+    .progress-box {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .models-list {
+      margin: 20px 0;
+      border: 1px solid #ddd;
+      padding: 10px;
+    }
+    
+    .model-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    #status {
+      margin-top: 16px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .success { background: #e6ffe6; }
+    .error { background: #ffe6e6; }
+    .warning { background: #fff3e6; }
+    
+    .sync-status {
+      font-style: italic;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h3>Account Selection</h3>
+    <select id="accountSelect">
+      <option value="">Select an account...</option>
+    </select>
+    
+    <div id="folderTree" class="folder-tree">
+      <!-- Folders will be populated here -->
+    </div>
+    
+    <button id="selectAllFolders">Select All</button>
+    <button id="deselectAllFolders">Deselect All</button>
+    <button id="trainButton">Start Training</button>
+  </div>
+  
+  <div class="main-content">
+    <h2>Email Archive Assistant - Training</h2>
+    
+    <div class="models-list">
+      <h3>Trained Models</h3>
+      <div id="modelsList">
+        <!-- Models will be listed here -->
+      </div>
+    </div>
+    
+    <div class="progress-box">
+      <h3>Training Progress</h3>
+      <div id="folderProgress">
+        Folders: <span id="folderCount">-</span>
+      </div>
+      <div id="messageProgress">
+        Messages: <span id="messageCount">-</span>
+      </div>
+      <div id="currentFolder" class="sync-status"></div>
+    </div>
+    
+    <div id="status"></div>
+  </div>
+
+  <script src="train.js"></script>
+</body>
+</html> 

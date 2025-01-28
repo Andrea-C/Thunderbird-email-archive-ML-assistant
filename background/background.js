@@ -83,14 +83,9 @@ let classifier = new NaiveBayesClassifier();
 
 // Open training dialog
 async function openTrainingDialog() {
-  const accounts = await browser.accounts.list();
-  // Create and open training dialog
-  const dialogUrl = browser.runtime.getURL("dialogs/train.html");
-  await browser.windows.create({
-    url: dialogUrl,
-    type: "popup",
-    width: 400,
-    height: 600
+  const trainingUrl = browser.runtime.getURL("pages/train.html");
+  await browser.tabs.create({
+    url: trainingUrl
   });
 }
 
@@ -103,16 +98,31 @@ async function openArchiveTab() {
 }
 
 // Training function
-async function trainModel(account) {
+async function trainModel(account, selectedFolders) {
   try {
     classifier = new NaiveBayesClassifier();
     const folders = await browser.folders.getSubFolders(account);
+    let totalFolders = selectedFolders.length;
+    let processedFolders = 0;
     let totalMessages = 0;
     let processedMessages = 0;
     
     // First, count total messages for progress tracking
     for (const folder of folders) {
-      if (isUserFolder(folder)) {
+      if (selectedFolders.includes(folder.path)) {
+        // Sync folder first
+        await browser.runtime.sendMessage({
+          type: 'folder-sync-start',
+          folder: folder.path
+        });
+        
+        await browser.folders.synchronizeMessages(folder);
+        
+        await browser.runtime.sendMessage({
+          type: 'folder-sync-complete',
+          folder: folder.path
+        });
+        
         const messages = await browser.messages.list(folder);
         if (messages && Array.isArray(messages)) {
           totalMessages += messages.length;
@@ -121,13 +131,15 @@ async function trainModel(account) {
     }
     
     if (totalMessages === 0) {
-      throw new Error("No messages found in user folders");
+      throw new Error("No messages found in selected folders");
     }
     
     // Now process messages
     for (const folder of folders) {
-      if (isUserFolder(folder)) {
+      if (selectedFolders.includes(folder.path)) {
+        processedFolders++;
         const messages = await browser.messages.list(folder);
+        
         if (messages && Array.isArray(messages)) {
           for (const message of messages) {
             try {
@@ -138,7 +150,16 @@ async function trainModel(account) {
               // Send progress update
               browser.runtime.sendMessage({
                 type: 'training-progress',
-                progress: Math.round((processedMessages / totalMessages) * 100)
+                folderProgress: {
+                  current: processedFolders,
+                  total: totalFolders,
+                  currentFolder: folder.path
+                },
+                messageProgress: {
+                  current: processedMessages,
+                  total: totalMessages,
+                  currentFolder: folder.path
+                }
               });
             } catch (err) {
               console.error('Error processing message:', err);
@@ -155,6 +176,11 @@ async function trainModel(account) {
     // Save trained model
     await browser.storage.local.set({
       [`model_${account.id}`]: JSON.stringify(classifier)
+    });
+    
+    // Save folder selection for future use
+    await browser.storage.local.set({
+      [`folders_${account.id}`]: JSON.stringify(selectedFolders)
     });
     
     // Also save the account ID in a list of trained accounts
@@ -176,6 +202,26 @@ async function trainModel(account) {
 async function getTrainedAccounts() {
   const data = await browser.storage.local.get('trainedAccounts');
   return data.trainedAccounts || [];
+}
+
+// Helper function to get saved folder selection
+async function getSavedFolders(accountId) {
+  const data = await browser.storage.local.get(`folders_${accountId}`);
+  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
+}
+
+// Helper function to delete a model
+async function deleteModel(accountId) {
+  await browser.storage.local.remove(`model_${accountId}`);
+  await browser.storage.local.remove(`folders_${accountId}`);
+  
+  const trainedAccounts = await browser.storage.local.get('trainedAccounts');
+  const accounts = trainedAccounts.trainedAccounts || [];
+  const index = accounts.indexOf(accountId);
+  if (index > -1) {
+    accounts.splice(index, 1);
+    await browser.storage.local.set({ trainedAccounts: accounts });
+  }
 }
 
 // Helper function to check if folder is user-created
@@ -201,5 +247,7 @@ window.emailArchive = {
   trainModel,
   classifyMessage,
   isUserFolder,
-  getTrainedAccounts
+  getTrainedAccounts,
+  getSavedFolders,
+  deleteModel
 }; 
