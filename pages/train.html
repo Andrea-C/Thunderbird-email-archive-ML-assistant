@@ -37,7 +37,22 @@
     
     .folder-item {
       margin: 5px 0;
-      padding-left: 20px;
+      display: flex;
+      align-items: center;
+      line-height: 1.5;
+    }
+    
+    .folder-item input[type="checkbox"] {
+      margin-right: 8px;
+    }
+    
+    .folder-item label {
+      flex: 1;
+      cursor: pointer;
+    }
+    
+    .folder-item.default {
+      font-weight: bold;
     }
     
     .progress-box {

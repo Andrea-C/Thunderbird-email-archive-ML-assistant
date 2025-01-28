@@ -230,6 +230,35 @@ function isUserFolder(folder) {
   return !systemFolders.includes(folder.name);
 }
 
+// Helper function to check if folder is a default folder
+function isDefaultFolder(folder) {
+  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
+  return systemFolders.includes(folder.name);
+}
+
+// Helper function to get all folders recursively
+async function getAllFolders(account) {
+  const rootFolder = account.rootFolder;
+  const allFolders = [];
+  
+  async function processFolder(folder, level = 0) {
+    allFolders.push({
+      ...folder,
+      level,
+      isDefault: isDefaultFolder(folder)
+    });
+    
+    if (folder.subFolders) {
+      for (const subFolder of folder.subFolders) {
+        await processFolder(subFolder, level + 1);
+      }
+    }
+  }
+  
+  await processFolder(rootFolder);
+  return allFolders;
+}
+
 // Message classification function
 async function classifyMessage(message, accountId) {
   const modelData = await browser.storage.local.get(`model_${accountId}`);
@@ -247,6 +276,8 @@ window.emailArchive = {
   trainModel,
   classifyMessage,
   isUserFolder,
+  isDefaultFolder,
+  getAllFolders,
   getTrainedAccounts,
   getSavedFolders,
   deleteModel

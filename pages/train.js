@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const messageCount = document.getElementById('messageCount');
   const currentFolder = document.getElementById('currentFolder');
   
-  // Load accounts
-  const accounts = await browser.accounts.list();
+  // Load accounts with subfolders
+  const accounts = await browser.accounts.list(true);
   for (const account of accounts) {
     const option = document.createElement('option');
     option.value = account.id;
@@ -62,28 +62,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Build folder tree
   async function buildFolderTree(account) {
     const background = await browser.runtime.getBackgroundPage();
-    const folders = await browser.folders.getSubFolders(account);
     const savedFolders = await background.emailArchive.getSavedFolders(account.id);
     
     folderTreeElement.innerHTML = '';
     folderTree = {};
     
-    // Sort folders by path to ensure parents come before children
-    folders.sort((a, b) => a.path.localeCompare(b.path));
+    // Get all folders including subfolders
+    const folders = await background.emailArchive.getAllFolders(account);
     
     for (const folder of folders) {
-      if (!background.emailArchive.isUserFolder(folder)) continue;
-      
       const div = document.createElement('div');
       div.className = 'folder-item';
+      div.style.marginLeft = `${folder.level * 20}px`;
       
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.dataset.path = folder.path;
-      checkbox.checked = savedFolders ? savedFolders.includes(folder.path) : true;
+      // Default folders are shown but unchecked by default
+      checkbox.checked = folder.isDefault ? false : (savedFolders ? savedFolders.includes(folder.path) : true);
       
       const label = document.createElement('label');
       label.textContent = folder.name;
+      if (folder.isDefault) {
+        label.style.fontWeight = 'bold';
+      }
       
       div.appendChild(checkbox);
       div.appendChild(label);
