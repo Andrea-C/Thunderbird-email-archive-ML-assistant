@@ -64,19 +64,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       const background = await browser.runtime.getBackgroundPage();
       
       for (const message of messages) {
+        console.log('Classifying message:', {
+          id: message.id,
+          subject: message.subject,
+          author: message.author
+        });
+        
         const targetFolder = await background.emailArchive.classifyMessage(message, currentAccount.id);
+        console.log('Classification result:', {
+          messageId: message.id,
+          targetFolder: targetFolder
+        });
+        
         const row = messageList.querySelector(`tr[data-message-id="${message.id}"]`);
         if (row) {
           const folderCell = row.querySelector('.target-folder');
-          folderCell.textContent = targetFolder;
-          folderCell.dataset.folder = targetFolder;
+          if (targetFolder) {
+            folderCell.textContent = targetFolder;
+            folderCell.dataset.folder = targetFolder;
+          } else {
+            folderCell.textContent = 'No folder predicted';
+            folderCell.style.color = '#999';
+          }
         }
       }
       
       moveButton.disabled = false;
-      status.textContent = 'Classification completed!';
+      status.textContent = `Classification completed! ${messages.length} messages processed.`;
       status.className = 'success';
     } catch (error) {
+      console.error('Classification error:', error);
       status.textContent = `Error: ${error.message}`;
       status.className = 'error';
     } finally {

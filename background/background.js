@@ -317,14 +317,45 @@ async function getAllFolders(account) {
 
 // Message classification function
 async function classifyMessage(message, accountId) {
-  const modelData = await browser.storage.local.get(`model_${accountId}`);
-  if (!modelData[`model_${accountId}`]) {
-    throw new Error("No trained model found for this account");
+  try {
+    console.log('Starting classification for message:', {
+      id: message.id,
+      subject: message.subject
+    });
+    
+    const modelData = await browser.storage.local.get(`model_${accountId}`);
+    if (!modelData[`model_${accountId}`]) {
+      throw new Error("No trained model found for this account");
+    }
+    
+    // Load and verify the classifier
+    classifier = Object.assign(new NaiveBayesClassifier(), JSON.parse(modelData[`model_${accountId}`]));
+    console.log('Loaded classifier:', {
+      totalDocs: classifier.totalDocs,
+      vocabularySize: classifier.vocabulary.size,
+      folders: Object.keys(classifier.folderCounts)
+    });
+    
+    // Get message text and classify
+    const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
+    const words = classifier.tokenize(fullText);
+    console.log('Message features:', {
+      wordCount: words.length,
+      sampleWords: words.slice(0, 5)
+    });
+    
+    // Get classification result
+    const targetFolder = classifier.predict(fullText);
+    console.log('Classification result:', {
+      messageId: message.id,
+      targetFolder: targetFolder
+    });
+    
+    return targetFolder;
+  } catch (error) {
+    console.error('Classification error:', error);
+    throw error;
   }
-  
-  classifier = Object.assign(new NaiveBayesClassifier(), JSON.parse(modelData[`model_${accountId}`]));
-  const fullText = `${message.author} ${message.subject} ${message.body}`;
-  return classifier.predict(fullText);
 }
 
 // Export functions for use in UI pages
