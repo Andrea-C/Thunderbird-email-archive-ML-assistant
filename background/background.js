@@ -26,14 +26,26 @@ class NaiveBayesClassifier {
     this.wordCounts = {};
     this.folderCounts = {};
     this.totalDocs = 0;
+    this.vocabulary = new Set();
   }
 
-  // Tokenize text into words
+  // Tokenize text into words, preserving important features
   tokenize(text) {
-    return text.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
+    // Preserve email addresses and domains
+    const emailPattern = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    const emails = text.match(emailPattern) || [];
+    
+    // Extract domains from email addresses
+    const domains = emails.map(email => email.split('@')[1]);
+    
+    // Basic word tokenization
+    const words = text.toLowerCase()
+      .replace(/[^a-z0-9@._+-\s]/g, ' ')
       .split(/\s+/)
       .filter(word => word.length > 2);
+    
+    // Combine all features
+    return [...new Set([...words, ...emails, ...domains])];
   }
 
   // Train the classifier with a document and its folder
@@ -49,8 +61,28 @@ class NaiveBayesClassifier {
     this.totalDocs++;
     
     for (const word of words) {
+      this.vocabulary.add(word);
       this.wordCounts[folder][word] = (this.wordCounts[folder][word] || 0) + 1;
     }
+  }
+
+  // Calculate probability scores with proper smoothing
+  calculateFolderScore(words, folder) {
+    // Prior probability (in log space)
+    let score = Math.log((this.folderCounts[folder] || 0) / this.totalDocs);
+    
+    const totalWordsInFolder = Object.values(this.wordCounts[folder] || {}).reduce((a, b) => a + b, 0);
+    const vocabularySize = this.vocabulary.size;
+    
+    // For each word, calculate likelihood with Laplace smoothing
+    for (const word of words) {
+      const wordCount = (this.wordCounts[folder] || {})[word] || 0;
+      // Add 1 for Laplace smoothing
+      const probability = (wordCount + 1) / (totalWordsInFolder + vocabularySize);
+      score += Math.log(probability);
+    }
+    
+    return score;
   }
 
   // Predict the most likely folder for a document
@@ -59,14 +91,9 @@ class NaiveBayesClassifier {
     let bestFolder = null;
     let bestScore = -Infinity;
     
+    // Calculate scores for each folder
     for (const folder in this.folderCounts) {
-      let score = Math.log(this.folderCounts[folder] / this.totalDocs);
-      
-      for (const word of words) {
-        const wordCount = this.wordCounts[folder][word] || 0;
-        const totalWords = Object.values(this.wordCounts[folder]).reduce((a, b) => a + b, 0);
-        score += Math.log((wordCount + 1) / (totalWords + Object.keys(this.wordCounts[folder]).length));
-      }
+      const score = this.calculateFolderScore(words, folder);
       
       if (score > bestScore) {
         bestScore = score;
