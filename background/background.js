@@ -106,11 +106,26 @@ async function trainModel(account, selectedFolders) {
     let totalMessages = 0;
     let processedMessages = 0;
     
+    // First, get all folders for this account
+    const allFolders = await browser.folders.query({
+      accountId: account.id,
+      hasMessages: true
+    });
+    
+    // Create a map of folder paths to folder objects
+    const folderMap = new Map();
+    for (const folder of allFolders) {
+      folderMap.set(folder.path, folder);
+    }
+    
     // First, count total messages for progress tracking
     for (const folderPath of selectedFolders) {
-      // Get folder by path
-      const folder = await browser.folders.get(folderPath);
-      if (!folder) continue;
+      // Get folder by path from our map
+      const folder = folderMap.get(folderPath);
+      if (!folder) {
+        console.warn(`Folder not found: ${folderPath}`);
+        continue;
+      }
       
       // Sync folder first and notify UI
       await browser.runtime.sendMessage({
@@ -119,21 +134,19 @@ async function trainModel(account, selectedFolders) {
       });
       
       try {
-        await browser.folders.synchronizeMessages(folder);
+        // Get folder info to check message count
+        const folderInfo = await browser.folders.getFolderInfo(folder.id);
+        if (folderInfo && folderInfo.totalMessageCount) {
+          totalMessages += folderInfo.totalMessageCount;
+        }
       } catch (error) {
-        console.warn(`Sync warning for folder ${folderPath}:`, error);
+        console.warn(`Folder info warning for ${folderPath}:`, error);
       }
       
       await browser.runtime.sendMessage({
         type: 'folder-sync-complete',
         folder: folderPath
       });
-      
-      // Get folder info to check message count
-      const folderInfo = await browser.folders.getFolderInfo(folder);
-      if (folderInfo && folderInfo.totalMessageCount) {
-        totalMessages += folderInfo.totalMessageCount;
-      }
     }
     
     if (totalMessages === 0) {
@@ -142,11 +155,11 @@ async function trainModel(account, selectedFolders) {
     
     // Now process messages using pagination
     for (const folderPath of selectedFolders) {
-      const folder = await browser.folders.get(folderPath);
+      const folder = folderMap.get(folderPath);
       if (!folder) continue;
       
       processedFolders++;
-      let page = await browser.messages.list(folder);
+      let page = await browser.messages.list(folder.id);
       
       while (page) {
         if (page.messages && Array.isArray(page.messages)) {
