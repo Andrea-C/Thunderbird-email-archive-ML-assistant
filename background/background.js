@@ -29,6 +29,26 @@ class NaiveBayesClassifier {
     this.vocabulary = new Set();
   }
 
+  // Add method to convert classifier to JSON-friendly format
+  toJSON() {
+    return {
+      wordCounts: this.wordCounts,
+      folderCounts: this.folderCounts,
+      totalDocs: this.totalDocs,
+      vocabulary: Array.from(this.vocabulary)
+    };
+  }
+
+  // Add method to restore classifier from JSON
+  static fromJSON(json) {
+    const classifier = new NaiveBayesClassifier();
+    classifier.wordCounts = json.wordCounts;
+    classifier.folderCounts = json.folderCounts;
+    classifier.totalDocs = json.totalDocs;
+    classifier.vocabulary = new Set(json.vocabulary);
+    return classifier;
+  }
+
   // Tokenize text into words, preserving important features
   tokenize(text) {
     // Preserve email addresses and domains
@@ -231,7 +251,7 @@ async function trainModel(account, selectedFolders) {
     
     // Save trained model
     await browser.storage.local.set({
-      [`model_${account.id}`]: JSON.stringify(classifier)
+      [`model_${account.id}`]: JSON.stringify(classifier.toJSON())
     });
     
     // Save folder selection for future use
@@ -328,12 +348,15 @@ async function classifyMessage(message, accountId) {
       throw new Error("No trained model found for this account");
     }
     
-    // Load and verify the classifier
-    classifier = Object.assign(new NaiveBayesClassifier(), JSON.parse(modelData[`model_${accountId}`]));
+    // Load and verify the classifier using fromJSON
+    const modelJson = JSON.parse(modelData[`model_${accountId}`]);
+    classifier = NaiveBayesClassifier.fromJSON(modelJson);
+    
     console.log('Loaded classifier:', {
       totalDocs: classifier.totalDocs,
       vocabularySize: classifier.vocabulary.size,
-      folders: Object.keys(classifier.folderCounts)
+      folders: Object.keys(classifier.folderCounts),
+      folderCounts: classifier.folderCounts
     });
     
     // Get message text and classify
@@ -341,14 +364,16 @@ async function classifyMessage(message, accountId) {
     const words = classifier.tokenize(fullText);
     console.log('Message features:', {
       wordCount: words.length,
-      sampleWords: words.slice(0, 5)
+      sampleWords: words.slice(0, 5),
+      folders: Object.keys(classifier.folderCounts)
     });
     
     // Get classification result
     const targetFolder = classifier.predict(fullText);
     console.log('Classification result:', {
       messageId: message.id,
-      targetFolder: targetFolder
+      targetFolder: targetFolder,
+      availableFolders: Object.keys(classifier.folderCounts)
     });
     
     return targetFolder;
