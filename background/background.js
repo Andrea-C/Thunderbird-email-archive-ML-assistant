@@ -101,32 +101,38 @@ async function openArchiveTab() {
 async function trainModel(account, selectedFolders) {
   try {
     classifier = new NaiveBayesClassifier();
-    const folders = await browser.folders.getSubFolders(account);
     let totalFolders = selectedFolders.length;
     let processedFolders = 0;
     let totalMessages = 0;
     let processedMessages = 0;
     
     // First, count total messages for progress tracking
-    for (const folder of folders) {
-      if (selectedFolders.includes(folder.path)) {
-        // Sync folder first
-        await browser.runtime.sendMessage({
-          type: 'folder-sync-start',
-          folder: folder.path
-        });
-        
+    for (const folderPath of selectedFolders) {
+      // Get folder by path
+      const folder = await browser.folders.get(folderPath);
+      if (!folder) continue;
+      
+      // Sync folder first and notify UI
+      await browser.runtime.sendMessage({
+        type: 'folder-sync-start',
+        folder: folderPath
+      });
+      
+      try {
         await browser.folders.synchronizeMessages(folder);
-        
-        await browser.runtime.sendMessage({
-          type: 'folder-sync-complete',
-          folder: folder.path
-        });
-        
-        const messages = await browser.messages.list(folder);
-        if (messages && Array.isArray(messages)) {
-          totalMessages += messages.length;
-        }
+      } catch (error) {
+        console.warn(`Sync warning for folder ${folderPath}:`, error);
+      }
+      
+      await browser.runtime.sendMessage({
+        type: 'folder-sync-complete',
+        folder: folderPath
+      });
+      
+      // Get folder info to check message count
+      const folderInfo = await browser.folders.getFolderInfo(folder);
+      if (folderInfo && folderInfo.totalMessageCount) {
+        totalMessages += folderInfo.totalMessageCount;
       }
     }
     
@@ -134,17 +140,20 @@ async function trainModel(account, selectedFolders) {
       throw new Error("No messages found in selected folders");
     }
     
-    // Now process messages
-    for (const folder of folders) {
-      if (selectedFolders.includes(folder.path)) {
-        processedFolders++;
-        const messages = await browser.messages.list(folder);
-        
-        if (messages && Array.isArray(messages)) {
-          for (const message of messages) {
+    // Now process messages using pagination
+    for (const folderPath of selectedFolders) {
+      const folder = await browser.folders.get(folderPath);
+      if (!folder) continue;
+      
+      processedFolders++;
+      let page = await browser.messages.list(folder);
+      
+      while (page) {
+        if (page.messages && Array.isArray(page.messages)) {
+          for (const message of page.messages) {
             try {
               const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
-              classifier.train(fullText, folder.path);
+              classifier.train(fullText, folderPath);
               processedMessages++;
               
               // Send progress update
@@ -153,18 +162,25 @@ async function trainModel(account, selectedFolders) {
                 folderProgress: {
                   current: processedFolders,
                   total: totalFolders,
-                  currentFolder: folder.path
+                  currentFolder: folderPath
                 },
                 messageProgress: {
                   current: processedMessages,
                   total: totalMessages,
-                  currentFolder: folder.path
+                  currentFolder: folderPath
                 }
               });
             } catch (err) {
               console.error('Error processing message:', err);
             }
           }
+        }
+        
+        // Get next page if available
+        if (page.id) {
+          page = await browser.messages.continueList(page.id);
+        } else {
+          page = null;
         }
       }
     }
