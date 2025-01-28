@@ -128,14 +128,42 @@ async function loadInboxMessages() {
   messages = [];
   
   try {
-    const inbox = await browser.folders.getInboxFolder(currentAccount);
-    messages = await browser.messages.list(inbox);
+    // Get all folders for the account
+    const folders = await browser.folders.query({
+      accountId: currentAccount.id,
+      specialUse: ['inbox']
+    });
     
-    if (!messages || messages.length === 0) {
+    if (!folders || folders.length === 0) {
+      throw new Error('Inbox folder not found');
+    }
+    
+    const inbox = folders[0];
+    let page = await browser.messages.list(inbox.id);
+    
+    if (!page || !page.messages) {
       messageList.innerHTML = '<tr><td colspan="5">No messages in Inbox</td></tr>';
       return;
     }
     
+    // Process first page
+    messages = [...page.messages];
+    
+    // Get remaining pages if they exist
+    while (page.id) {
+      page = await browser.messages.continueList(page.id);
+      if (page && page.messages) {
+        messages = [...messages, ...page.messages];
+      }
+    }
+    
+    if (messages.length === 0) {
+      messageList.innerHTML = '<tr><td colspan="5">No messages in Inbox</td></tr>';
+      return;
+    }
+    
+    // Clear existing content and add messages
+    messageList.innerHTML = '';
     messages.forEach((message, index) => {
       const row = document.createElement('tr');
       row.dataset.messageId = message.id;
@@ -156,9 +184,17 @@ async function loadInboxMessages() {
     checkboxes.forEach(checkbox => {
       checkbox.addEventListener('change', updateMoveButton);
     });
+    
+    // Update status
+    const status = document.getElementById('status');
+    status.textContent = `Loaded ${messages.length} messages from Inbox`;
+    status.className = 'success';
   } catch (error) {
     console.error('Error loading messages:', error);
     messageList.innerHTML = '<tr><td colspan="5">Error loading messages</td></tr>';
+    const status = document.getElementById('status');
+    status.textContent = `Error: ${error.message}`;
+    status.className = 'error';
   }
 }
 
