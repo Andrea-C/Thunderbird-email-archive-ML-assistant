@@ -10,39 +10,29 @@ function getConfidenceClass(confidence) {
 }
 
 // Sort messages function
-function sortMessages(column, direction) {
+function sortMessages(field, ascending = true) {
   messages.sort((a, b) => {
-    let valueA, valueB;
+    let aValue = a[field];
+    let bValue = b[field];
     
-    switch(column) {
-      case 'from':
-        valueA = a.author || '';
-        valueB = b.author || '';
-        break;
-      case 'subject':
-        valueA = a.subject || '';
-        valueB = b.subject || '';
-        break;
-      case 'date':
-        valueA = new Date(a.date).getTime();
-        valueB = new Date(b.date).getTime();
-        break;
-      case 'target':
-        valueA = a.predictedFolder || '';
-        valueB = b.predictedFolder || '';
-        break;
-      case 'confidence':
-        valueA = a.confidence || 0;
-        valueB = b.confidence || 0;
-        break;
-      default:
-        return 0;
+    // Handle dates
+    if (field === 'date') {
+      aValue = new Date(aValue);
+      bValue = new Date(bValue);
     }
     
-    if (valueA < valueB) return direction === 'asc' ? -1 : 1;
-    if (valueA > valueB) return direction === 'asc' ? 1 : -1;
+    // Handle numbers
+    if (field === 'confidence') {
+      aValue = isNaN(aValue) ? -1 : aValue;
+      bValue = isNaN(bValue) ? -1 : bValue;
+    }
+    
+    if (aValue < bValue) return ascending ? -1 : 1;
+    if (aValue > bValue) return ascending ? 1 : -1;
     return 0;
   });
+  
+  updateTable();
 }
 
 // Update table display
@@ -65,7 +55,7 @@ function updateTable() {
       <td class="col-from">${escapeHtml(message.author || '')}</td>
       <td class="col-subject">${escapeHtml(message.subject || '')}</td>
       <td class="col-confidence confidence-value ${confidenceClass}">${confidenceDisplay}</td>
-      <td class="col-target target-folder"></td>
+      <td class="col-target target-folder">${message.predictedFolder || ''}</td>
     `;
     
     messageList.appendChild(row);
@@ -76,6 +66,9 @@ function updateTable() {
   checkboxes.forEach(checkbox => {
     checkbox.addEventListener('change', updateMoveButton);
   });
+  
+  // Initialize resizing after table is created
+  initializeColumnResizing();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -142,26 +135,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const headers = document.querySelectorAll('th[data-sort]');
   headers.forEach(header => {
     header.addEventListener('click', () => {
-      const column = header.dataset.sort;
-      let direction = 'asc';
+      const field = header.dataset.sort;
+      const ascending = header.dataset.order !== 'asc';
       
-      // Remove sort classes from all headers
+      // Update sort indicators
       headers.forEach(h => {
-        h.classList.remove('sort-asc', 'sort-desc');
+        h.dataset.order = h === header ? (ascending ? 'asc' : 'desc') : '';
       });
       
-      // Toggle direction if clicking the same column
-      if (currentSort.column === column) {
-        direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-      }
-      
-      // Update sort state
-      currentSort = { column, direction };
-      header.classList.add(`sort-${direction}`);
-      
-      // Sort and update display
-      sortMessages(column, direction);
-      updateTable();
+      sortMessages(field, ascending);
     });
   });
   
@@ -358,7 +340,7 @@ async function loadInboxMessages() {
         <td class="col-from">${escapeHtml(message.author || '')}</td>
         <td class="col-subject">${escapeHtml(message.subject || '')}</td>
         <td class="col-confidence confidence-value ${confidenceClass}">${confidenceDisplay}</td>
-        <td class="col-target target-folder"></td>
+        <td class="col-target target-folder">${message.predictedFolder || ''}</td>
       `;
       
       messageList.appendChild(row);
@@ -398,4 +380,69 @@ function escapeHtml(unsafe) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-} 
+}
+
+// Refresh accounts when page becomes visible
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    await loadAccounts();
+  }
+});
+
+// Initial load
+async function loadAccounts() {
+  const accountSelect = document.getElementById('accountSelect');
+  const accounts = await browser.accounts.list();
+  const background = await browser.runtime.getBackgroundPage();
+  const trainedAccountIds = await background.emailArchive.getTrainedAccounts();
+  
+  const trainedAccounts = accounts.filter(account => trainedAccountIds.includes(account.id));
+  
+  if (trainedAccounts.length === 0) {
+    const status = document.getElementById('status');
+    status.textContent = 'No trained accounts found. Please train a model first.';
+    status.className = 'error';
+    accountSelect.disabled = true;
+    return;
+  }
+  
+  accountSelect.innerHTML = '';
+  for (const account of trainedAccounts) {
+    const option = document.createElement('option');
+    option.value = account.id;
+    option.textContent = account.name;
+    accountSelect.appendChild(option);
+  }
+}
+
+// Add column resizing
+function initializeColumnResizing() {
+  const table = document.querySelector('table');
+  const headers = table.querySelectorAll('th');
+  
+  headers.forEach(header => {
+    // Create resizer element
+    const resizer = document.createElement('div');
+    resizer.className = 'resizer';
+    header.appendChild(resizer);
+    let startX, startWidth;
+    
+    resizer.addEventListener('mousedown', e => {
+      startX = e.pageX;
+      startWidth = header.offsetWidth;
+      
+      const mouseMoveHandler = e => {
+        const width = startWidth + (e.pageX - startX);
+        header.style.width = `${width}px`;
+      };
+      
+      const mouseUpHandler = () => {
+        document.removeEventListener('mousemove', mouseMoveHandler);
+        document.removeEventListener('mouseup', mouseUpHandler);
+      };
+      
+      document.addEventListener('mousemove', mouseMoveHandler);
+      document.addEventListener('mouseup', mouseUpHandler);
+    });
+  });
+}

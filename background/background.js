@@ -101,34 +101,43 @@ class NaiveBayesClassifier {
   predictWithConfidence(text) {
     const words = this.tokenize(text);
     let maxScore = -Infinity;
-    let bestFolder = null;
     let scores = {};
     
     // Calculate scores for each folder
     for (const folder in this.folderCounts) {
       const score = this.calculateFolderScore(words, folder);
       scores[folder] = score;
-      
-      if (score > maxScore) {
-        maxScore = score;
+      maxScore = Math.max(maxScore, score);
+    }
+    
+    // Convert log probabilities to regular probabilities and normalize
+    let totalProb = 0;
+    const expScores = {};
+    
+    for (const folder in scores) {
+      // Subtract maxScore for numerical stability
+      expScores[folder] = Math.exp(scores[folder] - maxScore);
+      totalProb += expScores[folder];
+    }
+    
+    // Find best folder and calculate confidence
+    let bestFolder = null;
+    let bestProb = 0;
+    
+    for (const folder in expScores) {
+      const normalizedProb = expScores[folder] / totalProb;
+      if (normalizedProb > bestProb) {
+        bestProb = normalizedProb;
         bestFolder = folder;
       }
     }
     
-    // Convert log probabilities to regular probabilities and normalize
-    const expScores = {};
-    let sumExp = 0;
-    for (const folder in scores) {
-      expScores[folder] = Math.exp(scores[folder]);
-      sumExp += expScores[folder];
-    }
-    
-    // Calculate confidence as the probability of the best folder
-    const confidence = (expScores[bestFolder] / sumExp) * 100;
+    // Ensure we don't return NaN confidence
+    const confidence = totalProb > 0 ? Math.round(bestProb * 100) : 0;
     
     return {
       folder: bestFolder,
-      confidence: Math.round(confidence)
+      confidence: confidence
     };
   }
 
