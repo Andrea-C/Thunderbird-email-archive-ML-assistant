@@ -165,17 +165,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   
-  // Classify button handler - now classifies all messages
+  // Classify button handler - now classifies only selected messages
   classifyButton.addEventListener('click', async () => {
     try {
-      status.textContent = 'Classifying all messages...';
+      status.textContent = 'Classifying selected messages...';
       status.className = '';
       classifyButton.disabled = true;
       
+      const checkboxes = messageList.querySelectorAll('input[type="checkbox"]');
+      const selectedIndices = Array.from(checkboxes)
+        .map((checkbox, index) => checkbox.checked ? index : -1)
+        .filter(index => index !== -1);
+      
+      if (selectedIndices.length === 0) {
+        status.textContent = 'Please select messages to classify.';
+        status.className = 'error';
+        classifyButton.disabled = false;
+        return;
+      }
+      
+      const selectedMessages = selectedIndices.map(index => messages[index]);
       const background = await browser.runtime.getBackgroundPage();
       const confidenceThreshold = parseFloat(confidenceSlider.value);
       
-      for (const message of messages) {
+      for (const message of selectedMessages) {
         console.log('Classifying message:', {
           id: message.id,
           subject: message.subject,
@@ -217,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       
       moveButton.disabled = false;
-      status.textContent = `Classification completed! ${messages.length} messages processed.`;
+      status.textContent = `Classification completed! ${selectedMessages.length} messages processed.`;
       status.className = 'success';
     } catch (error) {
       console.error('Classification error:', error);

@@ -6,7 +6,11 @@
   <style>
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      margin: 20px;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+      width: 100%;
+      height: 100vh;
     }
     
     select, button {
@@ -16,6 +20,7 @@
     
     table {
       width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       margin-top: 20px;
     }
@@ -91,7 +96,10 @@
     }
     
     /* Column widths */
-    .col-checkbox { width: 30px; }
+    .col-checkbox { 
+      width: 40px;
+      padding-right: 20px;
+    }
     .col-date { width: 12%; }
     .col-from { width: 20%; }
     .col-subject { width: 30%; }
@@ -107,6 +115,14 @@
     .confidence-high { color: #2d7d3f; }
     .confidence-medium { color: #b36b00; }
     .confidence-low { color: #c92a2a; }
+
+    /* Fix checkbox column overlap */
+    th.col-checkbox {
+      padding-right: 20px;
+    }
+    th.col-checkbox::after {
+      content: none;
+    }
   </style>
 </head>
 <body>
@@ -147,4 +163,4 @@
 
   <script src="archive.js"></script>
 </body>
-</html> 
+</html>
