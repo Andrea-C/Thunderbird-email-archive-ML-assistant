@@ -131,34 +131,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Training handler
   trainButton.addEventListener('click', async () => {
-    const selectedFolders = Object.entries(folderTree)
-      .filter(([_, checkbox]) => checkbox.checked)
-      .map(([path]) => path);
-    
-    if (selectedFolders.length === 0) {
-      status.textContent = 'Please select at least one folder';
-      status.className = 'error';
-      return;
-    }
-    
     try {
       trainButton.disabled = true;
-      accountSelect.disabled = true;
-      status.textContent = 'Preparing training...';
+      status.textContent = 'Training in progress...';
       status.className = '';
+      
+      const selectedFolders = Object.entries(folderTree)
+        .filter(([_, checkbox]) => checkbox.checked)
+        .map(([path]) => path);
+      
+      if (selectedFolders.length === 0) {
+        status.textContent = 'Please select at least one folder.';
+        status.className = 'error';
+        return;
+      }
       
       const background = await browser.runtime.getBackgroundPage();
       const result = await background.emailArchive.trainModel(currentAccount, selectedFolders);
       
       if (result.success) {
-        status.textContent = `Training completed successfully! Processed ${result.messagesProcessed} messages.`;
+        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages.`;
         status.className = 'success';
-        await updateModelsList();
-      } else {
-        throw new Error('Training failed');
+        
+        // Notify other extension pages that training is complete
+        const tabs = await browser.tabs.query({});
+        for (const tab of tabs) {
+          try {
+            await browser.tabs.sendMessage(tab.id, {
+              type: 'training-complete',
+              accountId: currentAccount.id
+            });
+          } catch (error) {
+            // Ignore errors for tabs that don't have our content script
+            console.log('Could not send message to tab:', tab.id);
+          }
+        }
       }
     } catch (error) {
-      status.textContent = `Error: ${error.message}`;
+      console.error('Training error:', error);
+      status.textContent = 'Training error: ' + error.message;
       status.className = 'error';
     } finally {
       trainButton.disabled = false;

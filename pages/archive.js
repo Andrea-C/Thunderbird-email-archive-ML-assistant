@@ -12,21 +12,39 @@ function getConfidenceClass(confidence) {
 // Sort messages function
 function sortMessages(field, ascending = true) {
   messages.sort((a, b) => {
-    let aValue = a[field];
-    let bValue = b[field];
+    let aValue, bValue;
     
-    // Handle dates
-    if (field === 'date') {
-      aValue = new Date(aValue);
-      bValue = new Date(bValue);
+    // Get the correct values based on field
+    switch (field) {
+      case 'from':
+        aValue = (a.author || '').toLowerCase();
+        bValue = (b.author || '').toLowerCase();
+        break;
+      case 'subject':
+        aValue = (a.subject || '').toLowerCase();
+        bValue = (b.subject || '').toLowerCase();
+        break;
+      case 'date':
+        aValue = new Date(a.date);
+        bValue = new Date(b.date);
+        break;
+      case 'target':
+        aValue = (a.predictedFolder || '').toLowerCase();
+        bValue = (b.predictedFolder || '').toLowerCase();
+        break;
+      case 'confidence':
+        aValue = isNaN(a.confidence) ? -1 : a.confidence;
+        bValue = isNaN(b.confidence) ? -1 : b.confidence;
+        break;
+      default:
+        return 0;
     }
     
-    // Handle numbers
-    if (field === 'confidence') {
-      aValue = isNaN(aValue) ? -1 : aValue;
-      bValue = isNaN(bValue) ? -1 : bValue;
-    }
+    // Handle null/undefined values
+    if (aValue === null || aValue === undefined) aValue = '';
+    if (bValue === null || bValue === undefined) bValue = '';
     
+    // Compare values
     if (aValue < bValue) return ascending ? -1 : 1;
     if (aValue > bValue) return ascending ? 1 : -1;
     return 0;
@@ -446,3 +464,27 @@ function initializeColumnResizing() {
     });
   });
 }
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const messageList = document.getElementById('messageList');
+  const accountSelect = document.getElementById('accountSelect');
+  const classifyButton = document.getElementById('classifyButton');
+  const moveButton = document.getElementById('moveButton');
+  const status = document.getElementById('status');
+  const confidenceSlider = document.getElementById('confidenceSlider');
+  const confidenceValue = document.getElementById('confidenceValue');
+  
+  // Listen for training complete message
+  browser.runtime.onMessage.addListener(async (message) => {
+    if (message.type === 'training-complete') {
+      console.log('Training complete, refreshing accounts');
+      await loadAccounts();
+    }
+  });
+  
+  // Update confidence threshold display
+  confidenceSlider.addEventListener('input', () => {
+    confidenceValue.textContent = confidenceSlider.value + '%';
+    updateMoveButton();
+  });
+});
