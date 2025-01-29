@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const selectAll = document.getElementById('selectAll');
   const messageList = document.getElementById('messageList');
   const status = document.getElementById('status');
+  const confidenceSlider = document.getElementById('confidenceSlider');
+  const confidenceValue = document.getElementById('confidenceValue');
   
   // Load only trained accounts
   const accounts = await browser.accounts.list();
@@ -54,6 +56,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMoveButton();
   });
   
+  // Update confidence value display
+  confidenceSlider.addEventListener('input', () => {
+    confidenceValue.textContent = `${confidenceSlider.value}%`;
+  });
+  
   // Classify button handler - now classifies all messages
   classifyButton.addEventListener('click', async () => {
     try {
@@ -62,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       classifyButton.disabled = true;
       
       const background = await browser.runtime.getBackgroundPage();
+      const confidenceThreshold = parseFloat(confidenceSlider.value);
       
       for (const message of messages) {
         console.log('Classifying message:', {
@@ -70,21 +78,25 @@ document.addEventListener('DOMContentLoaded', async () => {
           author: message.author
         });
         
-        const targetFolder = await background.emailArchive.classifyMessage(message, currentAccount.id);
+        const result = await background.emailArchive.classifyMessage(message, currentAccount.id);
         console.log('Classification result:', {
           messageId: message.id,
-          targetFolder: targetFolder
+          result: result
         });
         
         const row = messageList.querySelector(`tr[data-message-id="${message.id}"]`);
         if (row) {
           const folderCell = row.querySelector('.target-folder');
-          if (targetFolder) {
-            folderCell.textContent = targetFolder;
-            folderCell.dataset.folder = targetFolder;
+          if (result && result.confidence >= confidenceThreshold) {
+            folderCell.textContent = result.folder;
+            folderCell.dataset.folder = result.folder;
+            folderCell.title = `Confidence: ${result.confidence.toFixed(1)}%`;
+            folderCell.classList.remove('low-confidence');
           } else {
-            folderCell.textContent = 'No folder predicted';
-            folderCell.style.color = '#999';
+            folderCell.textContent = 'Low confidence';
+            folderCell.dataset.folder = '';
+            folderCell.title = result ? `Confidence: ${result.confidence.toFixed(1)}%` : '';
+            folderCell.classList.add('low-confidence');
           }
         }
       }
@@ -117,16 +129,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       status.className = '';
       moveButton.disabled = true;
       
+      let movedCount = 0;
+      let skippedCount = 0;
+      
       for (const row of selectedRows) {
         const messageId = row.dataset.messageId;
         const targetFolder = row.querySelector('.target-folder').dataset.folder;
-        if (messageId && targetFolder) {
+        if (messageId && targetFolder && targetFolder !== '') {
           await browser.messages.move([messageId], targetFolder);
           row.remove();
+          movedCount++;
+        } else {
+          skippedCount++;
         }
       }
       
-      status.textContent = 'Messages moved successfully!';
+      status.textContent = `Messages processed: ${movedCount} moved, ${skippedCount} skipped (low confidence)`;
       status.className = 'success';
     } catch (error) {
       status.textContent = `Error: ${error.message}`;

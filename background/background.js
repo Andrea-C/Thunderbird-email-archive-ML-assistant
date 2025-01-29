@@ -110,10 +110,12 @@ class NaiveBayesClassifier {
     const words = this.tokenize(text);
     let bestFolder = null;
     let bestScore = -Infinity;
+    let scores = {};
     
     // Calculate scores for each folder
     for (const folder in this.folderCounts) {
       const score = this.calculateFolderScore(words, folder);
+      scores[folder] = score;
       
       if (score > bestScore) {
         bestScore = score;
@@ -121,7 +123,19 @@ class NaiveBayesClassifier {
       }
     }
     
-    return bestFolder;
+    // Convert log probabilities to regular probabilities and normalize
+    const expScores = Object.entries(scores).map(([folder, score]) => ({
+      folder,
+      score: Math.exp(score - bestScore) // Subtract bestScore for numerical stability
+    }));
+    
+    const totalScore = expScores.reduce((sum, {score}) => sum + score, 0);
+    const confidence = expScores.find(s => s.folder === bestFolder).score / totalScore;
+    
+    return {
+      folder: bestFolder,
+      confidence: confidence * 100 // Convert to percentage
+    };
   }
 }
 

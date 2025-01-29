@@ -153,6 +153,12 @@ So, when the training process is started, for each folder that is opened to read
 6. **Cleanup**  
    - After the user closes the tab/window, the extension releases any memory used by the model and closes references.
 
+   Archive page
+3) In the Archive page, we need to add a Probability/Confidence score as limit: for each message, if the classification Probability is equal or greater of the Probability/Confidence limit, then the message will be classfied in the column Target Folder, otherwise is set as "Low confidence". To achive this feature we need
+- a slider to set the Probability/Confidence Limit
+- a test after the message classification to check if we can assign the predicted folder or not
+- a test in the move message function to skip the messages that the Target folder is empty or "Low confidence" (the move message function should already skip the message not selected, but check it)
+
 ---
 
 ## 5. Detailed Implementation Steps
@@ -331,3 +337,11 @@ So, when the training process is started, for each folder that is opened to read
 - show the the sync completion state
 - wait the sync is completed
 - train the model with the messages of the folder
+
+
+Now let's make some improvements.
+
+Training page
+1) In the training page, the button to delete a model it's too wide because it occupies all the space between the model name and the right margin. Make it smaller. The size should be enough to contain the button label
+2) In the traning page, add some space between the label of the model name and the button to delete the model
+

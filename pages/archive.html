@@ -46,6 +46,22 @@
     
     .success { background: #e6ffe6; }
     .error { background: #ffe6e6; }
+    
+    .confidence-control {
+      display: flex;
+      align-items: center;
+      margin: 8px;
+      gap: 10px;
+    }
+    
+    .confidence-control input[type="range"] {
+      width: 200px;
+    }
+    
+    .low-confidence {
+      color: #999;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -58,6 +74,11 @@
   </div>
   
   <div class="actions">
+    <div class="confidence-control">
+      <label for="confidenceSlider">Confidence Threshold:</label>
+      <input type="range" id="confidenceSlider" min="0" max="100" value="50" step="5">
+      <span id="confidenceValue">50%</span>
+    </div>
     <button id="classifyButton">Classify Selected</button>
     <button id="moveButton" disabled>Move Selected</button>
   </div>
