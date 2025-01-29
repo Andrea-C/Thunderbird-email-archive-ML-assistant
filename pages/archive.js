@@ -186,32 +186,54 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const selectedMessages = selectedIndices.map(index => messages[index]);
       const background = await browser.runtime.getBackgroundPage();
-      const predictions = await background.emailArchive.classifyMessages(selectedMessages, currentAccount.id);
       
       // Update target folders in the table
       const confidenceThreshold = parseInt(confidenceSlider.value);
       const rows = messageList.getElementsByTagName('tr');
       
-      selectedIndices.forEach((index, i) => {
-        const prediction = predictions[i];
-        const targetCell = rows[index].querySelector('.target-folder');
+      // Process each message individually
+      for (let i = 0; i < selectedIndices.length; i++) {
+        const index = selectedIndices[i];
+        const message = messages[index];
         
-        targetCell.textContent = prediction.folder;
-        if (prediction.confidence < confidenceThreshold) {
+        try {
+          const prediction = await background.emailArchive.classifyMessage(message, currentAccount);
+          
+          // Store the prediction in the message object
+          message.predictedFolder = prediction.folder;
+          message.confidence = prediction.confidence;
+          
+          // Update the UI
+          const targetCell = rows[index].querySelector('.target-folder');
+          const confidenceCell = rows[index].querySelector('.confidence-value');
+          
+          targetCell.textContent = prediction.folder;
+          confidenceCell.textContent = `${prediction.confidence.toFixed(1)}%`;
+          confidenceCell.className = `confidence-value ${getConfidenceClass(prediction.confidence)}`;
+          
+          if (prediction.confidence < confidenceThreshold) {
+            targetCell.classList.add('low-confidence');
+          } else {
+            targetCell.classList.remove('low-confidence');
+          }
+        } catch (error) {
+          console.error(`Error classifying message ${message.id}:`, error);
+          const targetCell = rows[index].querySelector('.target-folder');
+          targetCell.textContent = 'Classification failed';
           targetCell.classList.add('low-confidence');
-        } else {
-          targetCell.classList.remove('low-confidence');
         }
-      });
+      }
       
       status.textContent = 'Classification complete.';
       status.className = 'success';
       moveButton.disabled = false;
+      classifyButton.disabled = false;
       
     } catch (error) {
       console.error('Classification error:', error);
       status.textContent = 'Error classifying messages: ' + error.message;
       status.className = 'error';
+      classifyButton.disabled = false;
     }
   });
   
