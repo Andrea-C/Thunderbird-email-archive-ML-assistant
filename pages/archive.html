@@ -24,10 +24,37 @@
       padding: 8px;
       text-align: left;
       border-bottom: 1px solid #ddd;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     
     th {
       background-color: #f5f5f5;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+    }
+    
+    th:hover {
+      background-color: #e5e5e5;
+    }
+    
+    th::after {
+      content: '⇅';
+      position: absolute;
+      right: 8px;
+      color: #999;
+    }
+    
+    th.sort-asc::after {
+      content: '↑';
+      color: #000;
+    }
+    
+    th.sort-desc::after {
+      content: '↓';
+      color: #000;
     }
     
     tr:hover {
@@ -62,6 +89,24 @@
       color: #999;
       font-style: italic;
     }
+    
+    /* Column widths */
+    .col-checkbox { width: 30px; }
+    .col-from { width: 20%; }
+    .col-subject { width: 30%; }
+    .col-date { width: 12%; }
+    .col-target { width: 25%; }
+    .col-confidence { width: 13%; }
+    
+    /* Confidence value styling */
+    .confidence-value {
+      text-align: right;
+      padding-right: 16px;
+    }
+    
+    .confidence-high { color: #2d7d3f; }
+    .confidence-medium { color: #b36b00; }
+    .confidence-low { color: #c92a2a; }
   </style>
 </head>
 <body>
@@ -88,11 +133,12 @@
   <table>
     <thead>
       <tr>
-        <th><input type="checkbox" id="selectAll"></th>
-        <th>From</th>
-        <th>Subject</th>
-        <th>Date</th>
-        <th>Target Folder</th>
+        <th class="col-checkbox"><input type="checkbox" id="selectAll"></th>
+        <th class="col-from" data-sort="from">From</th>
+        <th class="col-subject" data-sort="subject">Subject</th>
+        <th class="col-date" data-sort="date">Date</th>
+        <th class="col-target" data-sort="target">Target Folder</th>
+        <th class="col-confidence" data-sort="confidence">Confidence</th>
       </tr>
     </thead>
     <tbody id="messageList">

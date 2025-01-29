@@ -1,5 +1,82 @@
 let currentAccount = null;
 let messages = [];
+let currentSort = { column: 'date', direction: 'desc' };
+
+// Helper function to get confidence class
+function getConfidenceClass(confidence) {
+  if (confidence >= 80) return 'confidence-high';
+  if (confidence >= 50) return 'confidence-medium';
+  return 'confidence-low';
+}
+
+// Sort messages function
+function sortMessages(column, direction) {
+  messages.sort((a, b) => {
+    let valueA, valueB;
+    
+    switch(column) {
+      case 'from':
+        valueA = a.author || '';
+        valueB = b.author || '';
+        break;
+      case 'subject':
+        valueA = a.subject || '';
+        valueB = b.subject || '';
+        break;
+      case 'date':
+        valueA = new Date(a.date).getTime();
+        valueB = new Date(b.date).getTime();
+        break;
+      case 'target':
+        valueA = a.predictedFolder || '';
+        valueB = b.predictedFolder || '';
+        break;
+      case 'confidence':
+        valueA = a.confidence || 0;
+        valueB = b.confidence || 0;
+        break;
+      default:
+        return 0;
+    }
+    
+    if (valueA < valueB) return direction === 'asc' ? -1 : 1;
+    if (valueA > valueB) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+// Update table display
+function updateTable() {
+  const messageList = document.getElementById('messageList');
+  messageList.innerHTML = '';
+  
+  messages.forEach((message, index) => {
+    const row = document.createElement('tr');
+    row.dataset.messageId = message.id;
+    
+    const confidenceClass = message.confidence ? 
+      getConfidenceClass(message.confidence) : '';
+    const confidenceDisplay = message.confidence ? 
+      `${message.confidence.toFixed(1)}%` : '';
+    
+    row.innerHTML = `
+      <td><input type="checkbox" data-index="${index}"></td>
+      <td class="col-from">${escapeHtml(message.author || '')}</td>
+      <td class="col-subject">${escapeHtml(message.subject || '')}</td>
+      <td class="col-date">${new Date(message.date).toLocaleDateString()}</td>
+      <td class="col-target target-folder"></td>
+      <td class="col-confidence confidence-value ${confidenceClass}">${confidenceDisplay}</td>
+    `;
+    
+    messageList.appendChild(row);
+  });
+  
+  // Add change listeners to checkboxes
+  const checkboxes = messageList.querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateMoveButton);
+  });
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   const accountSelect = document.getElementById('accountSelect');
@@ -61,6 +138,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     confidenceValue.textContent = `${confidenceSlider.value}%`;
   });
   
+  // Add sort handlers
+  const headers = document.querySelectorAll('th[data-sort]');
+  headers.forEach(header => {
+    header.addEventListener('click', () => {
+      const column = header.dataset.sort;
+      let direction = 'asc';
+      
+      // Remove sort classes from all headers
+      headers.forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+      });
+      
+      // Toggle direction if clicking the same column
+      if (currentSort.column === column) {
+        direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+      }
+      
+      // Update sort state
+      currentSort = { column, direction };
+      header.classList.add(`sort-${direction}`);
+      
+      // Sort and update display
+      sortMessages(column, direction);
+      updateTable();
+    });
+  });
+  
   // Classify button handler - now classifies all messages
   classifyButton.addEventListener('click', async () => {
     try {
@@ -84,9 +188,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           result: result
         });
         
+        // Store prediction results in message object
+        message.predictedFolder = result ? result.folder : null;
+        message.confidence = result ? result.confidence : 0;
+        
         const row = messageList.querySelector(`tr[data-message-id="${message.id}"]`);
         if (row) {
           const folderCell = row.querySelector('.target-folder');
+          const confidenceCell = row.querySelector('.confidence-value');
+          
           if (result && result.confidence >= confidenceThreshold) {
             folderCell.textContent = result.folder;
             folderCell.dataset.folder = result.folder;
@@ -97,6 +207,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             folderCell.dataset.folder = '';
             folderCell.title = result ? `Confidence: ${result.confidence.toFixed(1)}%` : '';
             folderCell.classList.add('low-confidence');
+          }
+          
+          if (result) {
+            confidenceCell.textContent = `${result.confidence.toFixed(1)}%`;
+            confidenceCell.className = `confidence-value ${getConfidenceClass(result.confidence)}`;
           }
         }
       }

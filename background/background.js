@@ -1,22 +1,14 @@
 // Menu creation
 browser.menus.create({
-  id: "train-model",
-  title: "Archive Model Training",
-  contexts: ["tools_menu"]
-});
-
-browser.menus.create({
-  id: "archive-emails",
-  title: "E-mail Archive",
+  id: "email-archive-assistant",
+  title: "Email Archive ML Assistant",
   contexts: ["tools_menu"]
 });
 
 // Menu click handlers
 browser.menus.onClicked.addListener(async (info) => {
-  if (info.menuItemId === "train-model") {
-    await openTrainingDialog();
-  } else if (info.menuItemId === "archive-emails") {
-    await openArchiveTab();
+  if (info.menuItemId === "email-archive-assistant") {
+    await openAssistant();
   }
 });
 
@@ -142,19 +134,11 @@ class NaiveBayesClassifier {
 // Global classifier instance
 let classifier = new NaiveBayesClassifier();
 
-// Open training dialog
-async function openTrainingDialog() {
-  const trainingUrl = browser.runtime.getURL("pages/train.html");
+// Open assistant in a new tab
+async function openAssistant() {
+  const url = browser.runtime.getURL("pages/container.html");
   await browser.tabs.create({
-    url: trainingUrl
-  });
-}
-
-// Open archive tab
-async function openArchiveTab() {
-  const archiveUrl = browser.runtime.getURL("pages/archive.html");
-  await browser.tabs.create({
-    url: archiveUrl
+    url: url
   });
 }
 
