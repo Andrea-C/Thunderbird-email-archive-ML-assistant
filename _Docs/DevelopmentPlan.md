@@ -345,3 +345,7 @@ Training page
 1) In the training page, the button to delete a model it's too wide because it occupies all the space between the model name and the right margin. Make it smaller. The size should be enough to contain the button label
 2) In the traning page, add some space between the label of the model name and the button to delete the model
 
+Now lets fix the Archive page:
+- Reduce the size of the From column and Subject column and increase the size of the Target folder column, to have them more equally distributed
+- Add a column with the Confidence value of the predicted folder
+- Make the table be sortable by all the columns

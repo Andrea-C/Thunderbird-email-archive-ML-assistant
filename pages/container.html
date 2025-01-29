@@ -7,26 +7,33 @@
     body {
       font-family: system-ui, -apple-system, sans-serif;
       margin: 0;
-      padding: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
     }
     
     .header {
-      background: #f5f5f5;
-      padding: 20px;
-      border-bottom: 1px solid #ddd;
+      background: #2a2a2e;
+      color: white;
+      padding: 16px 20px;
     }
     
     .header h1 {
       margin: 0;
-      font-size: 24px;
+      font-size: 1.5em;
     }
     
     .tabs {
       display: flex;
-      background: #fff;
+      background: #f9f9f9;
       border-bottom: 1px solid #ddd;
       padding: 0 20px;
     }
@@ -36,87 +43,52 @@
       cursor: pointer;
       border: none;
       background: none;
-      font-size: 16px;
-      position: relative;
+      font-size: 1em;
       color: #666;
-    }
-    
-    .tab.active {
-      color: #000;
-      font-weight: 500;
-    }
-    
-    .tab.active::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #0060df;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
     }
     
     .tab:hover {
+      color: #000;
       background: #f0f0f0;
     }
     
+    .tab.active {
+      color: #0060df;
+      border-bottom-color: #0060df;
+    }
+    
     .content {
-      flex: 1;
-      overflow: hidden;
-    }
-    
-    .tab-panel {
-      height: 100%;
-      display: none;
-    }
-    
-    .tab-panel.active {
-      display: block;
+      padding: 20px;
+      min-height: 500px;
     }
     
     iframe {
       width: 100%;
-      height: 100%;
+      height: 800px;
       border: none;
+      display: none;
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Email Archive ML Assistant</h1>
-  </div>
-  
-  <div class="tabs">
-    <button class="tab active" data-tab="training">Training</button>
-    <button class="tab" data-tab="archive">Archive</button>
-  </div>
-  
-  <div class="content">
-    <div class="tab-panel active" id="training-panel">
-      <iframe src="train.html"></iframe>
+  <div class="container">
+    <div class="header">
+      <h1>Email Archive ML Assistant</h1>
     </div>
-    <div class="tab-panel" id="archive-panel">
-      <iframe src="archive.html"></iframe>
+    
+    <div class="tabs">
+      <button class="tab active" data-target="training">Training</button>
+      <button class="tab" data-target="archive">Archive</button>
+    </div>
+    
+    <div class="content">
+      <iframe id="training-frame" src="train.html"></iframe>
+      <iframe id="archive-frame" src="archive.html"></iframe>
     </div>
   </div>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const tabs = document.querySelectorAll('.tab');
-      
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          // Update active tab
-          tabs.forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          
-          // Update active panel
-          const panels = document.querySelectorAll('.tab-panel');
-          panels.forEach(p => p.classList.remove('active'));
-          document.getElementById(`${tab.dataset.tab}-panel`).classList.add('active');
-        });
-      });
-    });
-  </script>
+  
+  <script src="container.js"></script>
 </body>
 </html> 
