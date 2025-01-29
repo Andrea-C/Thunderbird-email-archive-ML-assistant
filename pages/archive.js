@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const message = messages[index];
         
         try {
-          const prediction = await background.emailArchive.classifyMessage(message, currentAccount);
+          const prediction = await background.emailArchive.classifyMessage(message, currentAccount.id);
           
           // Store the prediction in the message object
           message.predictedFolder = prediction.folder;

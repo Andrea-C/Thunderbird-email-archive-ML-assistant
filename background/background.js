@@ -98,10 +98,10 @@ class NaiveBayesClassifier {
   }
 
   // Predict the most likely folder for a document
-  predict(text) {
+  predictWithConfidence(text) {
     const words = this.tokenize(text);
+    let maxScore = -Infinity;
     let bestFolder = null;
-    let bestScore = -Infinity;
     let scores = {};
     
     // Calculate scores for each folder
@@ -109,25 +109,33 @@ class NaiveBayesClassifier {
       const score = this.calculateFolderScore(words, folder);
       scores[folder] = score;
       
-      if (score > bestScore) {
-        bestScore = score;
+      if (score > maxScore) {
+        maxScore = score;
         bestFolder = folder;
       }
     }
     
     // Convert log probabilities to regular probabilities and normalize
-    const expScores = Object.entries(scores).map(([folder, score]) => ({
-      folder,
-      score: Math.exp(score - bestScore) // Subtract bestScore for numerical stability
-    }));
+    const expScores = {};
+    let sumExp = 0;
+    for (const folder in scores) {
+      expScores[folder] = Math.exp(scores[folder]);
+      sumExp += expScores[folder];
+    }
     
-    const totalScore = expScores.reduce((sum, {score}) => sum + score, 0);
-    const confidence = expScores.find(s => s.folder === bestFolder).score / totalScore;
+    // Calculate confidence as the probability of the best folder
+    const confidence = (expScores[bestFolder] / sumExp) * 100;
     
     return {
       folder: bestFolder,
-      confidence: confidence * 100 // Convert to percentage
+      confidence: Math.round(confidence)
     };
+  }
+
+  // For backward compatibility
+  predict(text) {
+    const result = this.predictWithConfidence(text);
+    return result.folder;
   }
 }
 
@@ -366,15 +374,16 @@ async function classifyMessage(message, accountId) {
       folders: Object.keys(classifier.folderCounts)
     });
     
-    // Get classification result
-    const targetFolder = classifier.predict(fullText);
+    // Get classification result with confidence
+    const result = classifier.predictWithConfidence(fullText);
     console.log('Classification result:', {
       messageId: message.id,
-      targetFolder: targetFolder,
+      targetFolder: result.folder,
+      confidence: result.confidence,
       availableFolders: Object.keys(classifier.folderCounts)
     });
     
-    return targetFolder;
+    return result;
   } catch (error) {
     console.error('Classification error:', error);
     throw error;
