@@ -165,10 +165,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   
-  // Classify button handler - now classifies only selected messages
+  // Classify button handler
   classifyButton.addEventListener('click', async () => {
     try {
-      status.textContent = 'Classifying selected messages...';
+      status.textContent = 'Classifying messages...';
       status.className = '';
       classifyButton.disabled = true;
       
@@ -186,100 +186,73 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const selectedMessages = selectedIndices.map(index => messages[index]);
       const background = await browser.runtime.getBackgroundPage();
-      const confidenceThreshold = parseFloat(confidenceSlider.value);
+      const predictions = await background.emailArchive.classifyMessages(selectedMessages, currentAccount.id);
       
-      for (const message of selectedMessages) {
-        console.log('Classifying message:', {
-          id: message.id,
-          subject: message.subject,
-          author: message.author
-        });
+      // Update target folders in the table
+      const confidenceThreshold = parseInt(confidenceSlider.value);
+      const rows = messageList.getElementsByTagName('tr');
+      
+      selectedIndices.forEach((index, i) => {
+        const prediction = predictions[i];
+        const targetCell = rows[index].querySelector('.target-folder');
         
-        const result = await background.emailArchive.classifyMessage(message, currentAccount.id);
-        console.log('Classification result:', {
-          messageId: message.id,
-          result: result
-        });
-        
-        // Store prediction results in message object
-        message.predictedFolder = result ? result.folder : null;
-        message.confidence = result ? result.confidence : 0;
-        
-        const row = messageList.querySelector(`tr[data-message-id="${message.id}"]`);
-        if (row) {
-          const folderCell = row.querySelector('.target-folder');
-          const confidenceCell = row.querySelector('.confidence-value');
-          
-          if (result && result.confidence >= confidenceThreshold) {
-            folderCell.textContent = result.folder;
-            folderCell.dataset.folder = result.folder;
-            folderCell.title = `Confidence: ${result.confidence.toFixed(1)}%`;
-            folderCell.classList.remove('low-confidence');
-          } else {
-            folderCell.textContent = 'Low confidence';
-            folderCell.dataset.folder = '';
-            folderCell.title = result ? `Confidence: ${result.confidence.toFixed(1)}%` : '';
-            folderCell.classList.add('low-confidence');
-          }
-          
-          if (result) {
-            confidenceCell.textContent = `${result.confidence.toFixed(1)}%`;
-            confidenceCell.className = `confidence-value ${getConfidenceClass(result.confidence)}`;
-          }
+        targetCell.textContent = prediction.folder;
+        if (prediction.confidence < confidenceThreshold) {
+          targetCell.classList.add('low-confidence');
+        } else {
+          targetCell.classList.remove('low-confidence');
         }
-      }
+      });
       
-      moveButton.disabled = false;
-      status.textContent = `Classification completed! ${selectedMessages.length} messages processed.`;
+      status.textContent = 'Classification complete.';
       status.className = 'success';
+      moveButton.disabled = false;
+      
     } catch (error) {
       console.error('Classification error:', error);
-      status.textContent = `Error: ${error.message}`;
+      status.textContent = 'Error classifying messages: ' + error.message;
       status.className = 'error';
-    } finally {
-      classifyButton.disabled = false;
     }
   });
   
-  // Move button handler
+  // Handle move button
   moveButton.addEventListener('click', async () => {
-    const checkboxes = messageList.querySelectorAll('input[type="checkbox"]:checked');
-    const selectedRows = Array.from(checkboxes).map(cb => cb.closest('tr'));
+    if (!currentAccount) return;
     
-    if (selectedRows.length === 0) {
-      status.textContent = 'Please select messages to move';
+    const confidenceThreshold = parseInt(confidenceSlider.value);
+    const checkboxes = messageList.querySelectorAll('input[type="checkbox"]');
+    const selectedMessages = Array.from(checkboxes)
+      .map((checkbox, index) => checkbox.checked ? messages[index] : null)
+      .filter(message => message && message.confidence >= confidenceThreshold);
+    
+    if (selectedMessages.length === 0) {
+      status.textContent = 'No messages selected with confidence above threshold.';
       status.className = 'error';
       return;
     }
+
+    const totalSelected = Array.from(checkboxes).filter(cb => cb.checked).length;
+    const skippedCount = totalSelected - selectedMessages.length;
+    
+    status.textContent = 'Moving messages...';
+    status.className = '';
     
     try {
-      status.textContent = 'Moving messages...';
-      status.className = '';
+      await background.emailArchive.moveMessages(currentAccount, selectedMessages);
+      await loadInboxMessages();
+      
+      let statusMessage = `Messages moved successfully. `;
+      if (skippedCount > 0) {
+        statusMessage += `(${skippedCount} messages skipped due to low confidence)`;
+      }
+      status.textContent = statusMessage;
+      status.className = 'success';
       moveButton.disabled = true;
       
-      let movedCount = 0;
-      let skippedCount = 0;
-      
-      for (const row of selectedRows) {
-        const messageId = row.dataset.messageId;
-        const targetFolder = row.querySelector('.target-folder').dataset.folder;
-        if (messageId && targetFolder && targetFolder !== '') {
-          await browser.messages.move([messageId], targetFolder);
-          row.remove();
-          movedCount++;
-        } else {
-          skippedCount++;
-        }
-      }
-      
-      status.textContent = `Messages processed: ${movedCount} moved, ${skippedCount} skipped (low confidence)`;
-      status.className = 'success';
     } catch (error) {
-      status.textContent = `Error: ${error.message}`;
+      console.error('Move error:', error);
+      status.textContent = 'Error moving messages: ' + error.message;
       status.className = 'error';
-    } finally {
-      moveButton.disabled = false;
-      updateMoveButton();
     }
   });
 });

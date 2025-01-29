@@ -136,28 +136,45 @@ So, when the training process is started, for each folder that is opened to read
      - **Date**
      - **Target Folder** (initially empty)
      - **Subject**
+     - **Confidence**
 
 4. **Classification**  
    - When the user clicks “[Classify],” load the model for the mailbox (`model_<email-address>`).  
    - For each message currently listed:
      - Extract the same features used during training (From, Subject, Body, etc.).
      - Pass the features to the model’s inference method.
-     - The model predicts the most likely target folder.
+     - The model predicts the most likely target folder and confidence score.
      - The predicted folder name is placed in the “Target Folder” column.
+     - The confidence score is placed in the “Confidence” column.
+     - If the confidence score is below the set threshold, the text in the “Target Folder” column is displayed in red.
 
 5. **User Review and Move**  
    - The user reviews the predictions; the user can edit or confirm the predicted folder.  
    - The user then selects the checkboxes for emails that should be moved.  
-   - On clicking “[Move],” the extension moves the selected emails into their respective “Target Folder.”
+   - On clicking “[Move],” the extension moves the selected emails into their respective “Target Folder” only if the confidence score is equal to or higher than the confidence threshold.
+   - A status message is displayed indicating how many messages were moved and how many were skipped due to low confidence.
 
 6. **Cleanup**  
    - After the user closes the tab/window, the extension releases any memory used by the model and closes references.
 
    Archive page
-3) In the Archive page, we need to add a Probability/Confidence score as limit: for each message, if the classification Probability is equal or greater of the Probability/Confidence limit, then the message will be classfied in the column Target Folder, otherwise is set as "Low confidence". To achive this feature we need
+3) In the Archive page, we need to add a Probability/Confidence score as limit: for each message, if the classification Probability is equal or greater of the Probability/Confidence limit, then the message will be displayed normally in the Target Folder column, otherwise the prediction will still be shown but in red color to indicate low confidence. To achieve this feature we need:
 - a slider to set the Probability/Confidence Limit
-- a test after the message classification to check if we can assign the predicted folder or not
-- a test in the move message function to skip the messages that the Target folder is empty or "Low confidence" (the move message function should already skip the message not selected, but check it)
+- a test after the message classification to check the confidence level
+- when moving messages, the function will:
+  - skip messages that are not selected
+  - skip messages that have confidence below the confidence threshold
+  - show a status message indicating how many messages were skipped due to low confidence
+
+The move operation will only process messages that are both:
+1. Selected by the user (checkbox checked)
+2. Have a confidence score equal to or higher than the confidence threshold
+
+For messages with confidence below the threshold:
+- The predicted folder will still be shown in the Target Folder column
+- The text will be displayed in red to indicate low confidence
+- These messages will be automatically skipped during the move operation
+- A count of skipped messages will be shown in the status message after the move operation completes
 
 ---
 
@@ -210,12 +227,12 @@ So, when the training process is started, for each folder that is opened to read
    - For each new email in the Inbox, replicate the same feature extraction as was done during training.
 2. **Model Inference**  
    - Load the model corresponding to `<email-address>`.  
-   - Perform inference to get a predicted folder label.  
-   - Display the label in the “Target Folder” column.
+   - Perform inference to get a predicted folder label and confidence score.  
+   - Display the label in the “Target Folder” column and the confidence score in the “Confidence” column.
 3. **User Adjustment**  
    - Optionally allow the user to override the predicted folder if it seems incorrect.
 4. **Message Moving**  
-   - Upon confirmation, call the Thunderbird message move API to place each selected message into the predicted/confirmed folder.
+   - Upon confirmation, call the Thunderbird message move API to place each selected message into the predicted/confirmed folder only if the confidence score is equal to or higher than the confidence threshold.
 
 ---
 
