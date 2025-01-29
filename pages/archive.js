@@ -318,6 +318,12 @@ async function loadInboxMessages() {
       const row = document.createElement('tr');
       row.dataset.messageId = message.id;
       
+      // Initialize confidence variables
+      const confidenceClass = message.confidence ? 
+        getConfidenceClass(message.confidence) : '';
+      const confidenceDisplay = message.confidence ? 
+        `${message.confidence.toFixed(1)}%` : '';
+      
       row.innerHTML = `
         <td><input type="checkbox" data-index="${index}"></td>
         <td class="col-date">${new Date(message.date).toLocaleDateString()}</td>
