@@ -19,6 +19,7 @@ class NaiveBayesClassifier {
     this.folderCounts = {};
     this.totalDocs = 0;
     this.vocabulary = new Set();
+    this.folderTotalWords = {};
   }
 
   // Add method to convert classifier to JSON-friendly format
@@ -27,7 +28,8 @@ class NaiveBayesClassifier {
       wordCounts: this.wordCounts,
       folderCounts: this.folderCounts,
       totalDocs: this.totalDocs,
-      vocabulary: Array.from(this.vocabulary)
+      vocabulary: Array.from(this.vocabulary),
+      folderTotalWords: this.folderTotalWords
     };
   }
 
@@ -38,6 +40,7 @@ class NaiveBayesClassifier {
     classifier.folderCounts = json.folderCounts;
     classifier.totalDocs = json.totalDocs;
     classifier.vocabulary = new Set(json.vocabulary);
+    classifier.folderTotalWords = json.folderTotalWords;
     return classifier;
   }
 
@@ -67,6 +70,7 @@ class NaiveBayesClassifier {
     if (!this.wordCounts[folder]) {
       this.wordCounts[folder] = {};
       this.folderCounts[folder] = 0;
+      this.folderTotalWords[folder] = 0;
     }
     
     this.folderCounts[folder]++;
@@ -75,12 +79,19 @@ class NaiveBayesClassifier {
     for (const word of words) {
       this.vocabulary.add(word);
       this.wordCounts[folder][word] = (this.wordCounts[folder][word] || 0) + 1;
+      this.folderTotalWords[folder]++;
     }
   }
 
   // Calculate probability scores with proper smoothing
   calculateFolderScore(words, folder) {
-    const folderCount = this.folderCounts[folder];
+    // Ensure we have valid counts
+    const folderCount = this.folderCounts[folder] || 0;
+    if (folderCount === 0 || this.totalDocs === 0) {
+      return -Infinity;
+    }
+
+    // Calculate prior probability in log space
     const priorProb = Math.log(folderCount / this.totalDocs);
     let score = priorProb;
     
@@ -92,22 +103,35 @@ class NaiveBayesClassifier {
       wordScores: []
     };
     
-    const totalWordsInFolder = Object.values(this.wordCounts[folder] || {}).reduce((a, b) => a + b, 0);
-    const vocabularySize = this.vocabulary.size;
+    // Get total words in folder with proper fallback
+    const totalWordsInFolder = this.folderTotalWords[folder] || 0;
+    const vocabularySize = this.vocabulary.size || 1;  // Avoid division by zero
     
+    // Calculate word probabilities
     for (const word of words) {
-      const wordCount = this.wordCounts[folder]?.[word] || 0;
+      // Get word count with proper fallback
+      const wordCount = (this.wordCounts[folder] || {})[word] || 0;
       
-      // Laplace smoothing
-      const probability = (wordCount + 1) / (totalWordsInFolder + vocabularySize);
+      // Apply Laplace smoothing
+      const smoothedCount = wordCount + 1;
+      const smoothedTotal = totalWordsInFolder + vocabularySize;
+      const probability = smoothedCount / smoothedTotal;
+      
+      // Convert to log space
       const logProb = Math.log(probability);
-      score += logProb;
+      
+      // Only add if we got a valid probability
+      if (isFinite(logProb)) {
+        score += logProb;
+      }
       
       debugInfo.wordScores.push({
         word,
         wordCount,
         totalWords: totalWordsInFolder,
         vocabSize: vocabularySize,
+        smoothedCount,
+        smoothedTotal,
         probability,
         logProb
       });
@@ -120,13 +144,12 @@ class NaiveBayesClassifier {
       console.log('Debug - Folder Score Calculation:', debugInfo);
     }
     
-    return score;
+    return isFinite(score) ? score : -Infinity;
   }
 
   // Predict the most likely folder for a document
   predictWithConfidence(text) {
     const words = this.tokenize(text);
-    let maxScore = -Infinity;
     let scores = {};
     
     console.log('Debug - Words:', {
@@ -137,9 +160,13 @@ class NaiveBayesClassifier {
     // Calculate scores for each folder
     for (const folder in this.folderCounts) {
       const score = this.calculateFolderScore(words, folder);
-      scores[folder] = score;
-      maxScore = Math.max(maxScore, score);
+      if (isFinite(score)) {  // Only include valid scores
+        scores[folder] = score;
+      }
     }
+    
+    // Find maximum score for numerical stability
+    const maxScore = Math.max(...Object.values(scores));
     
     console.log('Debug - Raw Scores:', {
       maxScore,
@@ -155,8 +182,11 @@ class NaiveBayesClassifier {
     for (const folder in scores) {
       // Subtract maxScore for numerical stability
       const adjustedScore = scores[folder] - maxScore;
-      expScores[folder] = Math.exp(adjustedScore);
-      totalProb += expScores[folder];
+      const expScore = Math.exp(adjustedScore);
+      if (isFinite(expScore)) {  // Only include valid exponential scores
+        expScores[folder] = expScore;
+        totalProb += expScore;
+      }
     }
     
     console.log('Debug - Exp Scores:', {
@@ -171,12 +201,14 @@ class NaiveBayesClassifier {
     let bestProb = 0;
     const normalizedScores = {};
     
-    for (const folder in expScores) {
-      const normalizedProb = expScores[folder] / totalProb;
-      normalizedScores[folder] = normalizedProb;
-      if (normalizedProb > bestProb) {
-        bestProb = normalizedProb;
-        bestFolder = folder;
+    if (totalProb > 0) {  // Only normalize if we have valid probabilities
+      for (const folder in expScores) {
+        const normalizedProb = expScores[folder] / totalProb;
+        normalizedScores[folder] = normalizedProb;
+        if (normalizedProb > bestProb) {
+          bestProb = normalizedProb;
+          bestFolder = folder;
+        }
       }
     }
     
