@@ -390,10 +390,100 @@ async function classifyMessage(message, accountId) {
   }
 }
 
+// Move messages to their target folders
+async function moveMessages(accountId, messages) {
+  try {
+    console.log('Moving messages:', {
+      accountId,
+      messageCount: messages.length
+    });
+    
+    // Group messages by target folder for efficiency
+    const messagesByFolder = {};
+    for (const message of messages) {
+      if (!message.predictedFolder) {
+        console.warn(`Message ${message.id} has no predicted folder, skipping`);
+        continue;
+      }
+      
+      // Get folder info to get the folderId
+      try {
+        const folders = await browser.folders.query({
+          path: message.predictedFolder,
+          accountId: accountId
+        });
+        
+        if (folders.length === 0) {
+          console.warn(`Target folder not found: ${message.predictedFolder}`);
+          continue;
+        }
+        
+        const folderId = folders[0].id;
+        if (!messagesByFolder[folderId]) {
+          messagesByFolder[folderId] = [];
+        }
+        messagesByFolder[folderId].push(message.id);
+      } catch (error) {
+        console.error(`Error getting folder info for ${message.predictedFolder}:`, error);
+        continue;
+      }
+    }
+    
+    // Move messages in batches by folder
+    const results = [];
+    for (const [folderId, messageIds] of Object.entries(messagesByFolder)) {
+      console.log(`Moving ${messageIds.length} messages to folder: ${folderId}`);
+      try {
+        await browser.messages.move(messageIds, folderId);
+        results.push({
+          success: true,
+          count: messageIds.length,
+          folderId
+        });
+      } catch (error) {
+        // Handle case where messages can't be moved (they might be external)
+        console.error(`Error moving messages to folder ${folderId}:`, error);
+        if (error.message.includes('ExtensionError')) {
+          results.push({
+            success: false,
+            error: 'Cannot move external messages',
+            count: messageIds.length,
+            folderId
+          });
+        } else {
+          // Try copying instead as per documentation
+          try {
+            await browser.messages.copy(messageIds, folderId);
+            results.push({
+              success: true,
+              copied: true,
+              count: messageIds.length,
+              folderId
+            });
+          } catch (copyError) {
+            results.push({
+              success: false,
+              error: copyError.message,
+              count: messageIds.length,
+              folderId
+            });
+          }
+        }
+      }
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Move error:', error);
+    throw error;
+  }
+}
+
 // Export functions for use in UI pages
 window.emailArchive = {
   trainModel,
   classifyMessage,
+  moveMessages,
   isUserFolder,
   isDefaultFolder,
   getAllFolders,

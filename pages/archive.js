@@ -258,23 +258,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     status.textContent = 'Moving messages...';
     status.className = '';
+    moveButton.disabled = true;
     
     try {
-      await background.emailArchive.moveMessages(currentAccount, selectedMessages);
+      const results = await background.emailArchive.moveMessages(currentAccount.id, selectedMessages);
       await loadInboxMessages();
       
-      let statusMessage = `Messages moved successfully. `;
-      if (skippedCount > 0) {
-        statusMessage += `(${skippedCount} messages skipped due to low confidence)`;
+      // Process results
+      const successCount = results.reduce((sum, r) => sum + (r.success ? r.count : 0), 0);
+      const copyCount = results.reduce((sum, r) => sum + (r.success && r.copied ? r.count : 0), 0);
+      const failCount = results.reduce((sum, r) => sum + (!r.success ? r.count : 0), 0);
+      
+      let statusMessage = [];
+      if (successCount > 0) {
+        if (copyCount > 0) {
+          statusMessage.push(`${copyCount} messages copied (could not be moved)`);
+          successCount -= copyCount;
+        }
+        if (successCount > 0) {
+          statusMessage.push(`${successCount} messages moved`);
+        }
       }
-      status.textContent = statusMessage;
-      status.className = 'success';
-      moveButton.disabled = true;
+      if (failCount > 0) {
+        statusMessage.push(`${failCount} messages failed to move`);
+      }
+      if (skippedCount > 0) {
+        statusMessage.push(`${skippedCount} messages skipped due to low confidence`);
+      }
+      
+      status.textContent = statusMessage.join('. ');
+      status.className = failCount > 0 ? 'warning' : 'success';
       
     } catch (error) {
       console.error('Move error:', error);
       status.textContent = 'Error moving messages: ' + error.message;
       status.className = 'error';
+    } finally {
+      moveButton.disabled = false;
     }
   });
 });
