@@ -349,3 +349,9 @@ Now lets fix the Archive page:
 - Reduce the size of the From column and Subject column and increase the size of the Target folder column, to have them more equally distributed
 - Add a column with the Confidence value of the predicted folder
 - Make the table be sortable by all the columns
+
+Still need to fix the archive page:
+1) the layout shoul be full width withing the window size and adapt to it
+2) the column should share the available width
+3) the select all check box, in the table title row is overlaped by the sort icon. please do not overlap
+4) when press the classify selected, only the selected messages should be classified
