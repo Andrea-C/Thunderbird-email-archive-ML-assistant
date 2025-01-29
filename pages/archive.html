@@ -92,11 +92,11 @@
     
     /* Column widths */
     .col-checkbox { width: 30px; }
+    .col-date { width: 12%; }
     .col-from { width: 20%; }
     .col-subject { width: 30%; }
-    .col-date { width: 12%; }
-    .col-target { width: 25%; }
     .col-confidence { width: 13%; }
+    .col-target { width: 25%; }
     
     /* Confidence value styling */
     .confidence-value {
@@ -134,11 +134,11 @@
     <thead>
       <tr>
         <th class="col-checkbox"><input type="checkbox" id="selectAll"></th>
+        <th class="col-date" data-sort="date">Date</th>
         <th class="col-from" data-sort="from">From</th>
         <th class="col-subject" data-sort="subject">Subject</th>
-        <th class="col-date" data-sort="date">Date</th>
-        <th class="col-target" data-sort="target">Target Folder</th>
         <th class="col-confidence" data-sort="confidence">Confidence</th>
+        <th class="col-target" data-sort="target">Target Folder</th>
       </tr>
     </thead>
     <tbody id="messageList">

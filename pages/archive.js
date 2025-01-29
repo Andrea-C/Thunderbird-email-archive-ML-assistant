@@ -61,11 +61,11 @@ function updateTable() {
     
     row.innerHTML = `
       <td><input type="checkbox" data-index="${index}"></td>
+      <td class="col-date">${new Date(message.date).toLocaleDateString()}</td>
       <td class="col-from">${escapeHtml(message.author || '')}</td>
       <td class="col-subject">${escapeHtml(message.subject || '')}</td>
-      <td class="col-date">${new Date(message.date).toLocaleDateString()}</td>
-      <td class="col-target target-folder"></td>
       <td class="col-confidence confidence-value ${confidenceClass}">${confidenceDisplay}</td>
+      <td class="col-target target-folder"></td>
     `;
     
     messageList.appendChild(row);
@@ -320,10 +320,11 @@ async function loadInboxMessages() {
       
       row.innerHTML = `
         <td><input type="checkbox" data-index="${index}"></td>
-        <td>${escapeHtml(message.author || '')}</td>
-        <td>${escapeHtml(message.subject || '')}</td>
-        <td>${new Date(message.date).toLocaleDateString()}</td>
-        <td class="target-folder"></td>
+        <td class="col-date">${new Date(message.date).toLocaleDateString()}</td>
+        <td class="col-from">${escapeHtml(message.author || '')}</td>
+        <td class="col-subject">${escapeHtml(message.subject || '')}</td>
+        <td class="col-confidence confidence-value ${confidenceClass}">${confidenceDisplay}</td>
+        <td class="col-target target-folder"></td>
       `;
       
       messageList.appendChild(row);
