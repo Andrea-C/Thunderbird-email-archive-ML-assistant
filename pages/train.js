@@ -64,32 +64,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const background = await browser.runtime.getBackgroundPage();
       
-      // Get saved folder structure first
-      const savedStructure = await background.emailArchive.loadFolderStructure(account.id);
-      
-      // Get current folders
+      // Get current folders with their states (includes saved state handling)
       const folders = await background.emailArchive.getFoldersWithState(account);
-      
-      // Create a map for quick lookup of saved folder states
-      const savedFolderMap = new Map();
-      if (savedStructure) {
-        savedStructure.forEach(folder => {
-          savedFolderMap.set(folder.path, folder.selected);
-        });
-      }
       
       // Build folder hierarchy
       const folderMap = new Map();
       const rootFolders = [];
       
       folders.forEach(folder => {
-        // Update selection state from saved structure if exists
-        if (savedStructure) {
-          folder.selected = savedFolderMap.has(folder.path) ? 
-            savedFolderMap.get(folder.path) : 
-            background.emailArchive.isUserFolder(folder);
-        }
-        
         // Split path to get parent-child relationships
         const pathParts = folder.path.split('/');
         const folderName = pathParts[pathParts.length - 1];
@@ -130,6 +112,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         checkbox.checked = folder.selected;
         checkbox.id = `folder-${folder.path}`;
         
+        // Add change listener to save state when checkbox changes
+        checkbox.addEventListener('change', async () => {
+          // Update the folder's selected state in our data structure
+          const folderData = folderMap.get(folder.path);
+          if (folderData) {
+            folderData.selected = checkbox.checked;
+          }
+          
+          // Save the updated structure
+          const updatedStructure = Array.from(folderMap.values())
+            .filter(f => !f.children || f.children.length === 0) // Only save leaf folders
+            .map(f => ({
+              path: f.path,
+              name: f.name,
+              selected: f.selected
+            }));
+          
+          await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
+        });
+        
         const label = document.createElement('label');
         label.htmlFor = checkbox.id;
         label.textContent = folder.name;
@@ -146,15 +148,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Render the folder tree
       rootFolders.forEach(folder => renderFolder(folder));
-      
-      // Save updated structure
-      const updatedStructure = folders.map(folder => ({
-        path: folder.path,
-        name: folder.name,
-        selected: folder.selected
-      }));
-      
-      await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
       
     } catch (error) {
       console.error('Error loading folders:', error);
@@ -226,6 +219,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (message.type === 'folder-sync-complete') {
       currentFolder.textContent = `Sync complete: ${message.folder}`;
       currentFolder.className = 'sync-status success';
+    }
+  });
+
+  // Add handlers for select/deselect all buttons
+  document.getElementById('selectAllFolders').addEventListener('click', async () => {
+    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+    
+    // Trigger change event on one checkbox to save the state
+    if (checkboxes.length > 0) {
+      checkboxes[0].dispatchEvent(new Event('change'));
+    }
+  });
+
+  document.getElementById('deselectAllFolders').addEventListener('click', async () => {
+    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+    
+    // Trigger change event on one checkbox to save the state
+    if (checkboxes.length > 0) {
+      checkboxes[0].dispatchEvent(new Event('change'));
     }
   });
 }); 

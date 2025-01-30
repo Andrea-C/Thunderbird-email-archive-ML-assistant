@@ -284,60 +284,68 @@ async function deleteModel(accountId) {
 }
 
 // Save folder structure for an account
-async function saveFolderStructure(accountId, folderStructure) {
-  await browser.storage.local.set({
-    [`folders_${accountId}`]: JSON.stringify(folderStructure)
-  });
+async function saveFolderStructure(accountId, folders) {
+  try {
+    const key = `folders_${accountId}`;
+    const data = {};
+    data[key] = JSON.stringify(folders);
+    await browser.storage.local.set(data);
+    return true;
+  } catch (error) {
+    console.error('Error saving folder structure:', error);
+    return false;
+  }
 }
 
 // Load folder structure for an account
 async function loadFolderStructure(accountId) {
-  const data = await browser.storage.local.get(`folders_${accountId}`);
-  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
-}
-
-// Get all folders for an account with their selection state
-async function getFoldersWithState(account) {
-  // Get current folder structure
-  const allFolders = await getAllFolders(account);
-  if (!allFolders || allFolders.length === 0) {
-    throw new Error('No folders found');
-  }
-  
   try {
-    // Try to load saved folder structure
-    const savedStructure = await loadFolderStructure(account.id);
-    
-    // If we have a saved structure, merge it with current folders
-    if (savedStructure) {
-      const folderMap = new Map(savedStructure.map(f => [f.path, f.selected]));
-      
-      // Update folder structure with saved selection states
-      return allFolders.map(folder => ({
-        path: folder.path,
-        name: folder.name,
-        // If folder exists in saved structure, use saved selection state
-        // If it's a new folder, select it if it's not a default folder
-        selected: folderMap.has(folder.path) ? 
-          folderMap.get(folder.path) : 
-          !folder.isDefault
-      }));
-    }
-    
-    // For new accounts, select non-default folders by default
-    return allFolders.map(folder => ({
-      path: folder.path,
-      name: folder.name,
-      selected: !folder.isDefault
-    }));
+    const key = `folders_${accountId}`;
+    const data = await browser.storage.local.get(key);
+    return data[key] ? JSON.parse(data[key]) : null;
   } catch (error) {
     console.error('Error loading folder structure:', error);
-    // On error, return all folders with default selection
-    return allFolders.map(folder => ({
-      path: folder.path,
-      name: folder.name,
-      selected: !folder.isDefault
-    }));
+    return null;
+  }
+}
+
+// Get folders with their state
+async function getFoldersWithState(account) {
+  try {
+    // Get all folders for the account
+    const folders = await browser.folders.list(account.id);
+    
+    // Load saved structure
+    const savedStructure = await loadFolderStructure(account.id);
+    const savedFolderMap = new Map();
+    
+    if (savedStructure) {
+      savedStructure.forEach(folder => {
+        savedFolderMap.set(folder.path, folder.selected);
+      });
+    }
+    
+    // Process folders and set their states
+    return folders.map(folder => {
+      const folderInfo = {
+        path: folder.path,
+        name: folder.name,
+        selected: false
+      };
+      
+      // If we have saved state, use it
+      if (savedFolderMap.has(folder.path)) {
+        folderInfo.selected = savedFolderMap.get(folder.path);
+      } else {
+        // For new folders, use default logic
+        folderInfo.selected = isUserFolder(folder);
+      }
+      
+      return folderInfo;
+    });
+  } catch (error) {
+    console.error('Error getting folders with state:', error);
+    throw error;
   }
 }
 
