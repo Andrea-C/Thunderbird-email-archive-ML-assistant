@@ -676,5 +676,6 @@ window.emailArchive = {
   deleteModel,
   saveFolderStructure,
   loadFolderStructure,
-  getFoldersWithState
+  getFoldersWithState,
+  hasTrainedModel
 }; 

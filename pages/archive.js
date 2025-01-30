@@ -224,16 +224,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       classifyButton.disabled = true;
       moveButton.disabled = true;
       
-      // Verify model exists
-      const hasModel = await background.emailArchive.hasTrainedModel(currentAccount.id);
-      if (!hasModel) {
+      // Get selected messages
+      const selectedCheckboxes = messageList.querySelectorAll('input[type="checkbox"]:checked');
+      if (selectedCheckboxes.length === 0) {
+        status.textContent = 'Please select messages to classify';
+        status.className = 'warning';
+        classifyButton.disabled = false;
+        return;
+      }
+      
+      // Verify trained model exists
+      const trainedAccounts = await background.emailArchive.getTrainedAccounts();
+      if (!trainedAccounts.includes(currentAccount.id)) {
         throw new Error('No trained model found for this account');
       }
       
-      // Classify each message
+      // Classify selected messages
       for (let index = 0; index < messages.length; index++) {
-        const message = messages[index];
+        const checkbox = rows[index].querySelector('input[type="checkbox"]');
+        if (!checkbox || !checkbox.checked) continue;
         
+        const message = messages[index];
         try {
           const prediction = await background.emailArchive.classifyMessage(message, currentAccount.id);
           
@@ -265,12 +276,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       status.textContent = 'Classification complete.';
       status.className = 'success';
       moveButton.disabled = false;
-      classifyButton.disabled = false;
       
     } catch (error) {
       console.error('Classification error:', error);
       status.textContent = 'Error classifying messages: ' + error.message;
       status.className = 'error';
+    } finally {
       classifyButton.disabled = false;
     }
   });
@@ -299,7 +310,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     moveButton.disabled = true;
     
     try {
-      const results = await background.emailArchive.moveMessages(currentAccount.id, selectedMessages);
+      const results = await browser.emailArchive.moveMessages(currentAccount.id, selectedMessages);
       await loadInboxMessages();
       
       // Process results
