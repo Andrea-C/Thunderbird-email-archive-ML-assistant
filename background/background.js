@@ -312,8 +312,8 @@ async function loadFolderStructure(accountId) {
 // Get folders with their state
 async function getFoldersWithState(account) {
   try {
-    // Get all folders for the account
-    const folders = await browser.folders.list(account.id);
+    // Get all folders using the correct API
+    const folders = await getAllFolders(account);
     
     // Load saved structure
     const savedStructure = await loadFolderStructure(account.id);
@@ -338,7 +338,7 @@ async function getFoldersWithState(account) {
         folderInfo.selected = savedFolderMap.get(folder.path);
       } else {
         // For new folders, use default logic
-        folderInfo.selected = isUserFolder(folder);
+        folderInfo.selected = !folder.isDefault;
       }
       
       return folderInfo;
@@ -678,8 +678,7 @@ async function getSavedFolders(accountId) {
 
 // Helper function to check if folder is user-created
 function isUserFolder(folder) {
-  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
-  return !systemFolders.includes(folder.name);
+  return !isDefaultFolder(folder);
 }
 
 // Export functions for use in UI pages
