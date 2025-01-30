@@ -63,15 +63,66 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadFolders(account) {
     try {
       const background = await browser.runtime.getBackgroundPage();
+      
+      // Get saved folder structure first
+      const savedStructure = await background.emailArchive.loadFolderStructure(account.id);
+      
+      // Get current folders
       const folders = await background.emailArchive.getFoldersWithState(account);
+      
+      // Create a map for quick lookup of saved folder states
+      const savedFolderMap = new Map();
+      if (savedStructure) {
+        savedStructure.forEach(folder => {
+          savedFolderMap.set(folder.path, folder.selected);
+        });
+      }
+      
+      // Build folder hierarchy
+      const folderMap = new Map();
+      const rootFolders = [];
+      
+      folders.forEach(folder => {
+        // Update selection state from saved structure if exists
+        if (savedStructure) {
+          folder.selected = savedFolderMap.has(folder.path) ? 
+            savedFolderMap.get(folder.path) : 
+            background.emailArchive.isUserFolder(folder);
+        }
+        
+        // Split path to get parent-child relationships
+        const pathParts = folder.path.split('/');
+        const folderName = pathParts[pathParts.length - 1];
+        const parentPath = pathParts.slice(0, -1).join('/');
+        
+        // Create folder node
+        const folderNode = {
+          ...folder,
+          name: folderName,
+          children: [],
+          level: pathParts.length - 1
+        };
+        
+        folderMap.set(folder.path, folderNode);
+        
+        if (parentPath) {
+          const parentNode = folderMap.get(parentPath);
+          if (parentNode) {
+            parentNode.children.push(folderNode);
+          }
+        } else {
+          rootFolders.push(folderNode);
+        }
+      });
       
       // Clear existing folders
       folderTree.innerHTML = '';
       
-      // Create folder checkboxes
-      folders.forEach(folder => {
+      // Recursive function to render folder hierarchy
+      function renderFolder(folder, level = 0) {
         const div = document.createElement('div');
         div.className = 'folder-item';
+        div.style.paddingLeft = `${level * 20}px`; // Indent based on level
         
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -86,14 +137,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         div.appendChild(checkbox);
         div.appendChild(label);
         folderTree.appendChild(div);
-      });
+        
+        // Recursively render children
+        if (folder.children) {
+          folder.children.forEach(child => renderFolder(child, level + 1));
+        }
+      }
       
-      // Save initial state when changing accounts
-      const selectedFolders = folders
-        .filter(f => f.selected)
-        .map(f => ({ path: f.path, name: f.name, selected: true }));
+      // Render the folder tree
+      rootFolders.forEach(folder => renderFolder(folder));
       
-      await background.emailArchive.saveFolderStructure(account.id, selectedFolders);
+      // Save updated structure
+      const updatedStructure = folders.map(folder => ({
+        path: folder.path,
+        name: folder.name,
+        selected: folder.selected
+      }));
+      
+      await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
       
     } catch (error) {
       console.error('Error loading folders:', error);

@@ -90,11 +90,12 @@ function updateTable() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const messageList = document.getElementById('messageList');
   const accountSelect = document.getElementById('accountSelect');
+  const refreshButton = document.getElementById('refreshAccounts');
   const classifyButton = document.getElementById('classifyButton');
   const moveButton = document.getElementById('moveButton');
   const selectAll = document.getElementById('selectAll');
-  const messageList = document.getElementById('messageList');
   const status = document.getElementById('status');
   const confidenceSlider = document.getElementById('confidenceSlider');
   const confidenceValue = document.getElementById('confidenceValue');
@@ -102,6 +103,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load accounts and check for trained models
   async function loadAccounts() {
     try {
+      refreshButton.disabled = true;
+      refreshButton.textContent = '⌛'; // Show loading state
+      
       const background = await browser.runtime.getBackgroundPage();
       const accounts = await browser.accounts.list();
       const trainedAccounts = await background.emailArchive.getTrainedAccounts();
@@ -133,7 +137,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Clear message list if no account selected
       if (!currentAccount) {
-        const messageList = document.getElementById('messageList');
         messageList.innerHTML = '<tr><td colspan="6">Please select an account</td></tr>';
         status.textContent = '';
       }
@@ -145,11 +148,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentAccount = null;
       classifyButton.disabled = true;
       moveButton.disabled = true;
+    } finally {
+      refreshButton.disabled = false;
+      refreshButton.textContent = '↻'; // Reset button state
     }
   }
 
-  // Load accounts
+  // Load accounts initially
   await loadAccounts();
+
+  // Add refresh button handler
+  refreshButton.addEventListener('click', async () => {
+    await loadAccounts();
+    status.textContent = 'Account list refreshed';
+    status.className = 'success';
+  });
 
   // Account selection handler
   accountSelect.addEventListener('change', async () => {
@@ -482,22 +495,38 @@ function initializeColumnResizing() {
     header.appendChild(resizer);
     let startX, startWidth;
     
-    resizer.addEventListener('mousedown', e => {
+    resizer.addEventListener('pointerdown', e => {
       startX = e.pageX;
       startWidth = header.offsetWidth;
       
-      const mouseMoveHandler = e => {
+      // Set pointer capture to track pointer movements even outside the element
+      resizer.setPointerCapture(e.pointerId);
+      
+      const pointerMoveHandler = e => {
+        if (e.buttons === 0) {
+          // Button was released outside the window
+          cleanup();
+          return;
+        }
         const width = startWidth + (e.pageX - startX);
         header.style.width = `${width}px`;
       };
       
-      const mouseUpHandler = () => {
-        document.removeEventListener('mousemove', mouseMoveHandler);
-        document.removeEventListener('mouseup', mouseUpHandler);
+      const cleanup = () => {
+        resizer.removeEventListener('pointermove', pointerMoveHandler);
+        resizer.removeEventListener('pointerup', pointerUpHandler);
+        if (resizer.hasPointerCapture(e.pointerId)) {
+          resizer.releasePointerCapture(e.pointerId);
+        }
       };
       
-      document.addEventListener('mousemove', mouseMoveHandler);
-      document.addEventListener('mouseup', mouseUpHandler);
+      const pointerUpHandler = () => {
+        cleanup();
+      };
+      
+      resizer.addEventListener('pointermove', pointerMoveHandler);
+      resizer.addEventListener('pointerup', pointerUpHandler);
+      resizer.addEventListener('pointercancel', cleanup);
     });
   });
 }
