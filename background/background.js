@@ -295,34 +295,47 @@ async function loadFolderStructure(accountId) {
 
 // Get all folders for an account with their selection state
 async function getFoldersWithState(account) {
-  // Get current folder structure from Thunderbird
+  // Get current folder structure
   const allFolders = await getAllFolders(account);
+  if (!allFolders || allFolders.length === 0) {
+    throw new Error('No folders found');
+  }
   
-  // Try to load saved folder structure
-  const savedStructure = await loadFolderStructure(account.id);
-  
-  // If we have a saved structure, merge it with current folders
-  if (savedStructure) {
-    const folderMap = new Map(savedStructure.map(f => [f.path, f.selected]));
+  try {
+    // Try to load saved folder structure
+    const savedStructure = await loadFolderStructure(account.id);
     
-    // Update folder structure with saved selection states
+    // If we have a saved structure, merge it with current folders
+    if (savedStructure) {
+      const folderMap = new Map(savedStructure.map(f => [f.path, f.selected]));
+      
+      // Update folder structure with saved selection states
+      return allFolders.map(folder => ({
+        path: folder.path,
+        name: folder.name,
+        // If folder exists in saved structure, use saved selection state
+        // If it's a new folder, select it if it's not a default folder
+        selected: folderMap.has(folder.path) ? 
+          folderMap.get(folder.path) : 
+          !folder.isDefault
+      }));
+    }
+    
+    // For new accounts, select non-default folders by default
     return allFolders.map(folder => ({
       path: folder.path,
       name: folder.name,
-      // If folder exists in saved structure, use saved selection state
-      // If it's a new folder, select it if it's a user folder
-      selected: folderMap.has(folder.path) ? 
-        folderMap.get(folder.path) : 
-        isUserFolder(folder.path)
+      selected: !folder.isDefault
+    }));
+  } catch (error) {
+    console.error('Error loading folder structure:', error);
+    // On error, return all folders with default selection
+    return allFolders.map(folder => ({
+      path: folder.path,
+      name: folder.name,
+      selected: !folder.isDefault
     }));
   }
-  
-  // For new accounts, select user folders by default
-  return allFolders.map(folder => ({
-    path: folder.path,
-    name: folder.name,
-    selected: isUserFolder(folder.path)
-  }));
 }
 
 // Helper function to get all folders
