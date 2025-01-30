@@ -323,7 +323,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     moveButton.disabled = true;
     
     try {
-      const results = await browser.emailArchive.moveMessages(currentAccount.id, selectedMessages);
+      const background = await browser.runtime.getBackgroundPage();
+      const results = await background.emailArchive.moveMessages(currentAccount.id, selectedMessages);
       await loadInboxMessages();
       
       // Process results

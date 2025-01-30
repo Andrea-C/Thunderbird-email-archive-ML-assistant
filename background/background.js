@@ -581,93 +581,60 @@ async function classifyMessage(message, accountId) {
   }
 }
 
-// Move messages to their target folders
+// Move messages to their predicted folders
 async function moveMessages(accountId, messages) {
-  try {
-    console.log('Moving messages:', {
-      accountId,
-      messageCount: messages.length
-    });
-    
-    // Group messages by target folder for efficiency
-    const messagesByFolder = {};
-    for (const message of messages) {
+  const results = [];
+  
+  for (const message of messages) {
+    try {
       if (!message.predictedFolder) {
-        console.warn(`Message ${message.id} has no predicted folder, skipping`);
-        continue;
+        throw new Error('No predicted folder for message');
       }
       
-      // Get folder info to get the folderId
-      try {
-        const folders = await browser.folders.query({
-          path: message.predictedFolder,
-          accountId: accountId
-        });
-        
-        if (folders.length === 0) {
-          console.warn(`Target folder not found: ${message.predictedFolder}`);
-          continue;
-        }
-        
-        const folderId = folders[0].id;
-        if (!messagesByFolder[folderId]) {
-          messagesByFolder[folderId] = [];
-        }
-        messagesByFolder[folderId].push(message.id);
-      } catch (error) {
-        console.error(`Error getting folder info for ${message.predictedFolder}:`, error);
-        continue;
+      // Get the target folder
+      const folders = await browser.folders.query({
+        accountId: accountId,
+        path: message.predictedFolder
+      });
+      
+      if (!folders || folders.length === 0) {
+        throw new Error(`Target folder ${message.predictedFolder} not found`);
       }
-    }
-    
-    // Move messages in batches by folder
-    const results = [];
-    for (const [folderId, messageIds] of Object.entries(messagesByFolder)) {
-      console.log(`Moving ${messageIds.length} messages to folder: ${folderId}`);
+      
+      const targetFolder = folders[0];
+      
+      // Try to move the message
       try {
-        await browser.messages.move(messageIds, folderId);
+        await browser.messages.move([message.id], targetFolder);
         results.push({
+          messageId: message.id,
           success: true,
-          count: messageIds.length,
-          folderId
+          copied: false,
+          count: 1
         });
-      } catch (error) {
-        // Handle case where messages can't be moved (they might be external)
-        console.error(`Error moving messages to folder ${folderId}:`, error);
-        if (error.message.includes('ExtensionError')) {
-          results.push({
-            success: false,
-            error: 'Cannot move external messages',
-            count: messageIds.length,
-            folderId
-          });
-        } else {
-          // Try copying instead as per documentation
-          try {
-            await browser.messages.copy(messageIds, folderId);
-            results.push({
-              success: true,
-              copied: true,
-              count: messageIds.length,
-              folderId
-            });
-          } catch (copyError) {
-            results.push({
-              success: false,
-              error: copyError.message,
-              count: messageIds.length,
-              folderId
-            });
-          }
-        }
+      } catch (moveError) {
+        // If move fails, try to copy instead
+        console.warn('Move failed, attempting copy:', moveError);
+        await browser.messages.copy([message.id], targetFolder);
+        results.push({
+          messageId: message.id,
+          success: true,
+          copied: true,
+          count: 1
+        });
       }
+    } catch (error) {
+      console.error(`Error moving message ${message.id}:`, error);
+      results.push({
+        messageId: message.id,
+        success: false,
+        error: error.message,
+        count: 1
+      });
     }
-    
-    return results;
-  } catch (error) {
-    console.error('Move error:', error);
-    throw error;
   }
+  
+  return results;
 }
 
 // Get saved folder selection
