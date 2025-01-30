@@ -3,7 +3,7 @@ let folderTree = {};
 
 document.addEventListener('DOMContentLoaded', async () => {
   const accountSelect = document.getElementById('accountSelect');
-  const folderList = document.getElementById('folderList');
+  const folderTree = document.getElementById('folderTree');
   const selectAllBtn = document.getElementById('selectAllFolders');
   const deselectAllBtn = document.getElementById('deselectAllFolders');
   const trainButton = document.getElementById('trainButton');
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const folders = await background.emailArchive.getFoldersWithState(account);
       
       // Clear existing folders
-      folderList.innerHTML = '';
+      folderTree.innerHTML = '';
       
       // Create folder checkboxes
       folders.forEach(folder => {
@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         div.appendChild(checkbox);
         div.appendChild(label);
-        folderList.appendChild(div);
+        folderTree.appendChild(div);
       });
       
       // Save initial state when changing accounts
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       status.className = '';
       
       // Get selected folders
-      const selectedFolders = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
+      const selectedFolders = Array.from(folderTree.querySelectorAll('input[type="checkbox"]:checked'))
         .map(checkbox => ({
           path: checkbox.value,
           name: checkbox.nextElementSibling.textContent,
