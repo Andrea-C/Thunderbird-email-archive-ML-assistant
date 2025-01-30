@@ -46,6 +46,9 @@ class NaiveBayesClassifier {
 
   // Tokenize text into words, preserving important features
   tokenize(text) {
+    // Ensure text is a string
+    text = String(text || '');
+    
     // Preserve email addresses and domains
     const emailPattern = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
     const emails = text.match(emailPattern) || [];
@@ -545,9 +548,17 @@ async function classifyMessage(message, accountId) {
     const classifier = await loadModel(accountId);
     
     // Get message text and classify
-    const fullText = `${message.author || ''} ${message.subject || ''}`;
-    const words = classifier.tokenize(fullText);
-    const prediction = classifier.predictWithConfidence(words);
+    const fullText = [
+      message.author || '',
+      message.subject || '',
+      message.body?.plain || message.body || ''
+    ].join(' ').trim();
+    
+    if (!fullText) {
+      throw new Error('No text content available for classification');
+    }
+    
+    const prediction = classifier.predictWithConfidence(fullText);
     
     console.log('Classification result:', {
       messageId: message.id,
