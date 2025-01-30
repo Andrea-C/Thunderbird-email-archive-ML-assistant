@@ -99,39 +99,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   const confidenceSlider = document.getElementById('confidenceSlider');
   const confidenceValue = document.getElementById('confidenceValue');
   
-  // Load only trained accounts
-  const accounts = await browser.accounts.list();
-  const background = await browser.runtime.getBackgroundPage();
-  const trainedAccountIds = await background.emailArchive.getTrainedAccounts();
-  
-  const trainedAccounts = accounts.filter(account => trainedAccountIds.includes(account.id));
-  
-  if (trainedAccounts.length === 0) {
-    status.textContent = 'No trained accounts found. Please train a model first.';
-    status.className = 'error';
-    accountSelect.disabled = true;
-    classifyButton.disabled = true;
-    return;
+  // Load accounts and check for trained models
+  async function loadAccounts() {
+    try {
+      const background = await browser.runtime.getBackgroundPage();
+      const accounts = await browser.accounts.list();
+      const trainedAccounts = await background.emailArchive.getTrainedAccounts();
+      
+      // Clear and populate account select
+      accountSelect.innerHTML = '<option value="">Select Account</option>';
+      
+      for (const account of accounts) {
+        // Only show accounts that have trained models
+        if (trainedAccounts.includes(account.id)) {
+          const option = document.createElement('option');
+          option.value = account.id;
+          option.textContent = account.name;
+          accountSelect.appendChild(option);
+        }
+      }
+      
+      // If we have a current account and it's still trained, keep it selected
+      if (currentAccount && trainedAccounts.includes(currentAccount.id)) {
+        accountSelect.value = currentAccount.id;
+      } else {
+        currentAccount = null;
+        accountSelect.value = '';
+      }
+      
+      // Update UI state
+      classifyButton.disabled = !currentAccount;
+      moveButton.disabled = true;
+      
+      // If account changed, reload messages
+      if (currentAccount) {
+        await loadInboxMessages();
+      }
+    } catch (error) {
+      console.error('Error loading accounts:', error);
+      const status = document.getElementById('status');
+      status.textContent = 'Error loading accounts: ' + error.message;
+      status.className = 'error';
+    }
   }
-  
-  for (const account of trainedAccounts) {
-    const option = document.createElement('option');
-    option.value = account.id;
-    option.textContent = account.name;
-    accountSelect.appendChild(option);
-  }
-  
-  // Load messages for the first account automatically
-  if (trainedAccounts.length > 0) {
-    accountSelect.value = trainedAccounts[0].id;
-    currentAccount = trainedAccounts[0];
-    await loadInboxMessages();
-  }
-  
+
+  // Load accounts
+  await loadAccounts();
+
   // Account selection handler
   accountSelect.addEventListener('change', async () => {
     const accountId = accountSelect.value;
     if (!accountId) return;
+    
+    const background = await browser.runtime.getBackgroundPage();
+    const accounts = await browser.accounts.list();
+    const trainedAccounts = await background.emailArchive.getTrainedAccounts();
     
     currentAccount = trainedAccounts.find(a => a.id === accountId);
     await loadInboxMessages();
@@ -165,35 +187,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   
-  // Classify button handler
+  // Handle classify button click
   classifyButton.addEventListener('click', async () => {
+    if (!currentAccount) return;
+    
+    const background = await browser.runtime.getBackgroundPage();
+    const status = document.getElementById('status');
+    const confidenceThreshold = parseInt(confidenceSlider.value);
+    const rows = messageList.getElementsByTagName('tr');
+    
     try {
       status.textContent = 'Classifying messages...';
       status.className = '';
       classifyButton.disabled = true;
+      moveButton.disabled = true;
       
-      const checkboxes = messageList.querySelectorAll('input[type="checkbox"]');
-      const selectedIndices = Array.from(checkboxes)
-        .map((checkbox, index) => checkbox.checked ? index : -1)
-        .filter(index => index !== -1);
-      
-      if (selectedIndices.length === 0) {
-        status.textContent = 'Please select messages to classify.';
-        status.className = 'error';
-        classifyButton.disabled = false;
-        return;
+      // Verify model exists
+      const hasModel = await background.emailArchive.hasTrainedModel(currentAccount.id);
+      if (!hasModel) {
+        throw new Error('No trained model found for this account');
       }
       
-      const selectedMessages = selectedIndices.map(index => messages[index]);
-      const background = await browser.runtime.getBackgroundPage();
-      
-      // Update target folders in the table
-      const confidenceThreshold = parseInt(confidenceSlider.value);
-      const rows = messageList.getElementsByTagName('tr');
-      
-      // Process each message individually
-      for (let i = 0; i < selectedIndices.length; i++) {
-        const index = selectedIndices[i];
+      // Classify each message
+      for (let index = 0; index < messages.length; index++) {
         const message = messages[index];
         
         try {
@@ -220,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           console.error(`Error classifying message ${message.id}:`, error);
           const targetCell = rows[index].querySelector('.target-folder');
           targetCell.textContent = 'Classification failed';
-          targetCell.classList.add('low-confidence');
+          targetCell.classList.add('error');
         }
       }
       
@@ -406,32 +422,6 @@ document.addEventListener('visibilitychange', async () => {
     await loadAccounts();
   }
 });
-
-// Initial load
-async function loadAccounts() {
-  const accountSelect = document.getElementById('accountSelect');
-  const accounts = await browser.accounts.list();
-  const background = await browser.runtime.getBackgroundPage();
-  const trainedAccountIds = await background.emailArchive.getTrainedAccounts();
-  
-  const trainedAccounts = accounts.filter(account => trainedAccountIds.includes(account.id));
-  
-  if (trainedAccounts.length === 0) {
-    const status = document.getElementById('status');
-    status.textContent = 'No trained accounts found. Please train a model first.';
-    status.className = 'error';
-    accountSelect.disabled = true;
-    return;
-  }
-  
-  accountSelect.innerHTML = '';
-  for (const account of trainedAccounts) {
-    const option = document.createElement('option');
-    option.value = account.id;
-    option.textContent = account.name;
-    accountSelect.appendChild(option);
-  }
-}
 
 // Add column resizing
 function initializeColumnResizing() {

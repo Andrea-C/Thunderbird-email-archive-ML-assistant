@@ -330,26 +330,38 @@ async function getAllFolders(account) {
   const folders = [];
   
   async function traverseFolder(folder) {
+    // Skip virtual folders
+    if (folder.type === 'virtual') return;
+    
     folders.push({
       path: folder.path,
-      name: folder.name
+      name: folder.name,
+      isDefault: isDefaultFolder(folder)
     });
     
-    if (folder.subFolders) {
-      for (const subFolder of folder.subFolders) {
-        await traverseFolder(subFolder);
-      }
+    // Get subfolders
+    const subFolders = await browser.messages.listFolders(folder);
+    for (const subFolder of subFolders) {
+      await traverseFolder(subFolder);
     }
   }
   
-  const rootFolder = await browser.folders.getTree(account.id);
-  await traverseFolder(rootFolder);
+  // Get root folder
+  const rootFolder = await browser.accounts.get(account.id);
+  if (rootFolder && rootFolder.folders) {
+    for (const folder of rootFolder.folders) {
+      await traverseFolder(folder);
+    }
+  }
   
   return folders;
 }
 
-// Global classifier instance
-let classifier = new NaiveBayesClassifier();
+// Helper function to check if folder is a default system folder
+function isDefaultFolder(folder) {
+  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
+  return systemFolders.includes(folder.name) || folder.type === 'special';
+}
 
 // Open assistant in a new tab
 async function openAssistant() {
@@ -485,57 +497,51 @@ async function trainModel(account, selectedFolders) {
   }
 }
 
-// Helper function to get trained accounts
+// Get list of accounts that have trained models
 async function getTrainedAccounts() {
-  const data = await browser.storage.local.get('trainedAccounts');
-  return data.trainedAccounts || [];
+  const data = await browser.storage.local.get(null);
+  const trainedAccounts = [];
+  
+  // Look for model_* keys in storage
+  for (const key of Object.keys(data)) {
+    if (key.startsWith('model_')) {
+      const accountId = key.replace('model_', '');
+      trainedAccounts.push(accountId);
+    }
+  }
+  
+  return trainedAccounts;
 }
 
-// Helper function to get saved folder selection
-async function getSavedFolders(accountId) {
-  const data = await browser.storage.local.get(`folders_${accountId}`);
-  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
-}
-
-// Helper function to check if folder is user-created
-function isUserFolder(folder) {
-  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
-  return !systemFolders.includes(folder.name);
-}
-
-// Helper function to check if folder is a default folder
-function isDefaultFolder(folder) {
-  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
-  return systemFolders.includes(folder.name);
+// Check if account has a trained model
+async function hasTrainedModel(accountId) {
+  const modelData = await browser.storage.local.get(`model_${accountId}`);
+  return !!modelData[`model_${accountId}`];
 }
 
 // Message classification function
 async function classifyMessage(message, accountId) {
   try {
-    console.log('Starting classification for message:', {
+    console.log('Classifying message:', {
       id: message.id,
       subject: message.subject
     });
     
+    // Load and verify the model exists
     const classifier = await loadModel(accountId);
-    const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
-    const words = classifier.tokenize(fullText);
-    console.log('Message features:', {
-      wordCount: words.length,
-      sampleWords: words.slice(0, 5),
-      folders: Object.keys(classifier.folderCounts)
-    });
     
-    // Get classification result with confidence
-    const result = classifier.predictWithConfidence(fullText);
+    // Get message text and classify
+    const fullText = `${message.author || ''} ${message.subject || ''}`;
+    const words = classifier.tokenize(fullText);
+    const prediction = classifier.predictWithConfidence(words);
+    
     console.log('Classification result:', {
       messageId: message.id,
-      targetFolder: result.folder,
-      confidence: result.confidence,
-      availableFolders: Object.keys(classifier.folderCounts)
+      predictedFolder: prediction.folder,
+      confidence: prediction.confidence
     });
     
-    return result;
+    return prediction;
   } catch (error) {
     console.error('Classification error:', error);
     throw error;
@@ -629,6 +635,18 @@ async function moveMessages(accountId, messages) {
     console.error('Move error:', error);
     throw error;
   }
+}
+
+// Get saved folder selection
+async function getSavedFolders(accountId) {
+  const data = await browser.storage.local.get(`folders_${accountId}`);
+  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
+}
+
+// Helper function to check if folder is user-created
+function isUserFolder(folder) {
+  const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
+  return !systemFolders.includes(folder.name);
 }
 
 // Export functions for use in UI pages
