@@ -3,7 +3,7 @@ let folderTree = {};
 
 document.addEventListener('DOMContentLoaded', async () => {
   const accountSelect = document.getElementById('accountSelect');
-  const folderTreeElement = document.getElementById('folderTree');
+  const folderList = document.getElementById('folderList');
   const selectAllBtn = document.getElementById('selectAllFolders');
   const deselectAllBtn = document.getElementById('deselectAllFolders');
   const trainButton = document.getElementById('trainButton');
@@ -59,58 +59,97 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   await updateModelsList();
   
-  // Build folder tree
-  async function buildFolderTree(account) {
-    const background = await browser.runtime.getBackgroundPage();
-    const savedFolders = await background.emailArchive.getSavedFolders(account.id);
-    
-    folderTreeElement.innerHTML = '';
-    folderTree = {};
-    
-    // Get all folders including subfolders
-    const folders = await background.emailArchive.getAllFolders(account);
-    
-    for (const folder of folders) {
-      const div = document.createElement('div');
-      div.className = 'folder-item';
-      div.style.marginLeft = `${folder.level * 20}px`;
+  // Load folders for selected account
+  async function loadFolders(account) {
+    try {
+      const background = await browser.runtime.getBackgroundPage();
+      const folders = await background.emailArchive.getFoldersWithState(account);
       
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.dataset.path = folder.path;
-      // Default folders are shown but unchecked by default
-      checkbox.checked = folder.isDefault ? false : (savedFolders ? savedFolders.includes(folder.path) : true);
+      // Clear existing folders
+      folderList.innerHTML = '';
       
-      const label = document.createElement('label');
-      label.textContent = folder.name;
-      if (folder.isDefault) {
-        label.style.fontWeight = 'bold';
-      }
+      // Create folder checkboxes
+      folders.forEach(folder => {
+        const div = document.createElement('div');
+        div.className = 'folder-item';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = folder.path;
+        checkbox.checked = folder.selected;
+        checkbox.id = `folder-${folder.path}`;
+        
+        const label = document.createElement('label');
+        label.htmlFor = checkbox.id;
+        label.textContent = folder.name;
+        
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        folderList.appendChild(div);
+      });
       
-      div.appendChild(checkbox);
-      div.appendChild(label);
+      // Save initial state when changing accounts
+      const selectedFolders = folders
+        .filter(f => f.selected)
+        .map(f => ({ path: f.path, name: f.name, selected: true }));
       
-      folderTreeElement.appendChild(div);
-      folderTree[folder.path] = checkbox;
+      await background.emailArchive.saveFolderStructure(account.id, selectedFolders);
+      
+    } catch (error) {
+      console.error('Error loading folders:', error);
+      status.textContent = 'Error loading folders: ' + error.message;
+      status.className = 'error';
     }
   }
   
-  // Account selection handler
+  // Handle account selection change
   accountSelect.addEventListener('change', async () => {
-    const accountId = accountSelect.value;
-    if (!accountId) return;
-    
-    currentAccount = accounts.find(a => a.id === accountId);
-    await buildFolderTree(currentAccount);
+    const selectedAccount = accounts.find(acc => acc.id === accountSelect.value);
+    if (selectedAccount) {
+      currentAccount = selectedAccount;
+      await loadFolders(selectedAccount);
+    }
   });
   
-  // Select/Deselect all handlers
-  selectAllBtn.addEventListener('click', () => {
-    Object.values(folderTree).forEach(checkbox => checkbox.checked = true);
-  });
-  
-  deselectAllBtn.addEventListener('click', () => {
-    Object.values(folderTree).forEach(checkbox => checkbox.checked = false);
+  // Handle train button click
+  trainButton.addEventListener('click', async () => {
+    try {
+      trainButton.disabled = true;
+      status.textContent = 'Training in progress...';
+      status.className = '';
+      
+      // Get selected folders
+      const selectedFolders = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(checkbox => ({
+          path: checkbox.value,
+          name: checkbox.nextElementSibling.textContent,
+          selected: true
+        }));
+      
+      if (selectedFolders.length === 0) {
+        status.textContent = 'Please select at least one folder.';
+        status.className = 'error';
+        return;
+      }
+      
+      // Save current folder selection
+      const background = await browser.runtime.getBackgroundPage();
+      await background.emailArchive.saveFolderStructure(currentAccount.id, selectedFolders);
+      
+      // Train the model
+      const result = await background.emailArchive.trainModel(currentAccount, selectedFolders.map(f => f.path));
+      
+      if (result.success) {
+        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages.`;
+        status.className = 'success';
+      }
+    } catch (error) {
+      console.error('Training error:', error);
+      status.textContent = 'Training error: ' + error.message;
+      status.className = 'error';
+    } finally {
+      trainButton.disabled = false;
+    }
   });
   
   // Progress message handler
@@ -126,59 +165,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (message.type === 'folder-sync-complete') {
       currentFolder.textContent = `Sync complete: ${message.folder}`;
       currentFolder.className = 'sync-status success';
-    }
-  });
-  
-  // Training handler
-  trainButton.addEventListener('click', async () => {
-    try {
-      trainButton.disabled = true;
-      status.textContent = 'Training in progress...';
-      status.className = '';
-      
-      const selectedFolders = Object.entries(folderTree)
-        .filter(([_, checkbox]) => checkbox.checked)
-        .map(([path]) => path);
-      
-      if (selectedFolders.length === 0) {
-        status.textContent = 'Please select at least one folder.';
-        status.className = 'error';
-        return;
-      }
-      
-      const background = await browser.runtime.getBackgroundPage();
-      const result = await background.emailArchive.trainModel(currentAccount, selectedFolders);
-      
-      if (result.success) {
-        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages.`;
-        status.className = 'success';
-        
-        // Notify other extension pages that training is complete
-        const tabs = await browser.tabs.query({});
-        for (const tab of tabs) {
-          try {
-            await browser.tabs.sendMessage(tab.id, {
-              type: 'training-complete',
-              accountId: currentAccount.id
-            });
-          } catch (error) {
-            // Ignore errors for tabs that don't have our content script
-            console.log('Could not send message to tab:', tab.id);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Training error:', error);
-      status.textContent = 'Training error: ' + error.message;
-      status.className = 'error';
-    } finally {
-      trainButton.disabled = false;
-      accountSelect.disabled = false;
-      
-      // Reset progress displays
-      folderCount.textContent = '-';
-      messageCount.textContent = '-';
-      currentFolder.textContent = '';
     }
   });
 }); 

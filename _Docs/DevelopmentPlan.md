@@ -102,7 +102,7 @@ When the training process starts
 - A text box where the module write the number of folder processed and the number of total folder to process
 - A text box where the module write the number of messages processed and the number of total messagges to process in the current processed folder
 
-#### WARNING
+### WARNING
 the mailboxes are sync with IMAP Protocol.
 Often the local replica of the folders, is not in sync and need times to be updated.
 So, when the training process is started, for each folder that is opened to read the e-mail messages, 
@@ -110,11 +110,6 @@ So, when the training process is started, for each folder that is opened to read
 - show the the sync completion state
 - wait the sync is completed
 - train the model with the messages of the folder
-
-
-
-
-
 
 ---
 
@@ -236,7 +231,39 @@ For messages with confidence below the threshold:
 
 ---
 
-## 6. Data Structures and Storage
+## 6. Model Storage and Persistence
+
+### Storage Implementation
+- Models are stored using Thunderbird's `browser.storage.local` API
+- Each model is stored with key format: `model_${accountId}`
+- Models are cached in memory for performance using a Map
+- Models persist across Thunderbird restarts
+- Models are automatically deleted when extension is uninstalled
+
+### Model Lifecycle
+1. Training
+   - Model is created and trained in memory
+   - Model is saved to storage using `browser.storage.local.set()`
+   - Model is cached in memory Map
+
+2. Loading
+   - Check memory cache first
+   - If not in cache, load from storage
+   - Parse and cache for future use
+
+3. Deletion
+   - Remove from storage using `browser.storage.local.remove()`
+   - Remove from memory cache
+   - Triggered by delete button in Train page
+
+### Performance Considerations
+- Models are cached in memory to reduce storage reads
+- Cache is cleared when models are deleted
+- Memory usage is monitored and managed
+
+---
+
+## 7. Data Structures and Storage
 
 1. **Model File Format**  
    - If using a custom approach, store model data as JSON with relevant weights, word indices, or as a binary file from an external ML library.  
@@ -249,7 +276,7 @@ For messages with confidence below the threshold:
 
 ---
 
-## 7. Error Handling and Edge Cases
+## 8. Error Handling and Edge Cases
 
 1. **No Model Found**  
    - If the user attempts to classify a mailbox without a model, show an error or prompt to train first.
@@ -263,7 +290,7 @@ For messages with confidence below the threshold:
 
 ---
 
-## 8. Testing Plan
+## 9. Testing Plan
 
 1. **Unit Tests**  
    - Test helper functions (folder enumeration, feature extraction, classification logic) in isolation.
@@ -278,7 +305,7 @@ For messages with confidence below the threshold:
 
 ---
 
-## 9. Deployment and Maintenance
+## 10. Deployment and Maintenance
 
 1. **Packaging the Extension**  
    - Follow Thunderbird’s guidelines for packaging. This typically involves zipping your extension folder and possibly signing it.  
@@ -294,7 +321,7 @@ For messages with confidence below the threshold:
 
 ---
 
-## 10. Potential Future Enhancements
+## 11. Potential Future Enhancements
 
 1. **Incremental Learning**  
    - Each time the user corrects a folder prediction, store that feedback. Over time, retrain the model with corrected data.
@@ -306,6 +333,41 @@ For messages with confidence below the threshold:
    - If beneficial, consider analyzing attachment metadata (e.g., filenames, file types) to further refine classification (though the current requirements say to ignore attachments).
 5. **Auto-Archive**  
    - Optionally automate archiving actions (e.g., an “auto-archive” feature) after classification if the user permits.
+
+---
+
+## 12. Folder Structure Persistence
+
+### Storage Implementation
+- Folder structures are stored using `browser.storage.local` API
+- Each folder structure is stored with key format: `folders_${accountId}`
+- Structure includes folder paths, names, and selection states
+- Persists across Thunderbird restarts
+- Automatically deleted when extension is uninstalled
+
+### Folder Structure Lifecycle
+1. Initial Load
+   - Load current folder structure from Thunderbird
+   - If saved structure exists:
+     - Use saved selection states for existing folders
+     - For new folders, use default selection logic (user folders selected)
+   - If no saved structure:
+     - Use default selection logic (user folders selected, system folders unselected)
+
+2. Updates
+   - Save structure whenever folder selection changes
+   - Merge changes when folders are added/removed from mailbox
+   - Preserve user's folder selections across sessions
+
+3. Deletion
+   - Remove from storage when model is deleted
+   - Clean up when extension is uninstalled
+
+### Selection Rules
+- New user folders: Selected by default
+- New system folders: Unselected by default
+- Existing folders: Use saved selection state
+- Deleted folders: Removed from saved structure
 
 ---
 

@@ -238,6 +238,116 @@ class NaiveBayesClassifier {
   }
 }
 
+// Initialize models map to cache loaded models
+const loadedModels = new Map();
+
+// Load model for an account
+async function loadModel(accountId) {
+  // Check cache first
+  if (loadedModels.has(accountId)) {
+    return loadedModels.get(accountId);
+  }
+
+  // Load from storage
+  const modelData = await browser.storage.local.get(`model_${accountId}`);
+  if (!modelData[`model_${accountId}`]) {
+    throw new Error("No trained model found for this account");
+  }
+
+  // Parse and cache the model
+  const classifier = NaiveBayesClassifier.fromJSON(JSON.parse(modelData[`model_${accountId}`]));
+  loadedModels.set(accountId, classifier);
+  return classifier;
+}
+
+// Save model for an account
+async function saveModel(accountId, classifier) {
+  // Save to storage
+  await browser.storage.local.set({
+    [`model_${accountId}`]: JSON.stringify(classifier.toJSON())
+  });
+  
+  // Update cache
+  loadedModels.set(accountId, classifier);
+}
+
+// Delete model for an account
+async function deleteModel(accountId) {
+  // Remove from storage
+  await browser.storage.local.remove(`model_${accountId}`);
+  
+  // Remove from cache
+  loadedModels.delete(accountId);
+}
+
+// Save folder structure for an account
+async function saveFolderStructure(accountId, folderStructure) {
+  await browser.storage.local.set({
+    [`folders_${accountId}`]: JSON.stringify(folderStructure)
+  });
+}
+
+// Load folder structure for an account
+async function loadFolderStructure(accountId) {
+  const data = await browser.storage.local.get(`folders_${accountId}`);
+  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
+}
+
+// Get all folders for an account with their selection state
+async function getFoldersWithState(account) {
+  // Get current folder structure from Thunderbird
+  const allFolders = await getAllFolders(account);
+  
+  // Try to load saved folder structure
+  const savedStructure = await loadFolderStructure(account.id);
+  
+  // If we have a saved structure, merge it with current folders
+  if (savedStructure) {
+    const folderMap = new Map(savedStructure.map(f => [f.path, f.selected]));
+    
+    // Update folder structure with saved selection states
+    return allFolders.map(folder => ({
+      path: folder.path,
+      name: folder.name,
+      // If folder exists in saved structure, use saved selection state
+      // If it's a new folder, select it if it's a user folder
+      selected: folderMap.has(folder.path) ? 
+        folderMap.get(folder.path) : 
+        isUserFolder(folder.path)
+    }));
+  }
+  
+  // For new accounts, select user folders by default
+  return allFolders.map(folder => ({
+    path: folder.path,
+    name: folder.name,
+    selected: isUserFolder(folder.path)
+  }));
+}
+
+// Helper function to get all folders
+async function getAllFolders(account) {
+  const folders = [];
+  
+  async function traverseFolder(folder) {
+    folders.push({
+      path: folder.path,
+      name: folder.name
+    });
+    
+    if (folder.subFolders) {
+      for (const subFolder of folder.subFolders) {
+        await traverseFolder(subFolder);
+      }
+    }
+  }
+  
+  const rootFolder = await browser.folders.getTree(account.id);
+  await traverseFolder(rootFolder);
+  
+  return folders;
+}
+
 // Global classifier instance
 let classifier = new NaiveBayesClassifier();
 
@@ -355,14 +465,10 @@ async function trainModel(account, selectedFolders) {
     }
     
     // Save trained model
-    await browser.storage.local.set({
-      [`model_${account.id}`]: JSON.stringify(classifier.toJSON())
-    });
+    await saveModel(account.id, classifier);
     
     // Save folder selection for future use
-    await browser.storage.local.set({
-      [`folders_${account.id}`]: JSON.stringify(selectedFolders)
-    });
+    await saveFolderStructure(account.id, selectedFolders);
     
     // Also save the account ID in a list of trained accounts
     const trainedAccounts = await browser.storage.local.get('trainedAccounts');
@@ -391,20 +497,6 @@ async function getSavedFolders(accountId) {
   return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
 }
 
-// Helper function to delete a model
-async function deleteModel(accountId) {
-  await browser.storage.local.remove(`model_${accountId}`);
-  await browser.storage.local.remove(`folders_${accountId}`);
-  
-  const trainedAccounts = await browser.storage.local.get('trainedAccounts');
-  const accounts = trainedAccounts.trainedAccounts || [];
-  const index = accounts.indexOf(accountId);
-  if (index > -1) {
-    accounts.splice(index, 1);
-    await browser.storage.local.set({ trainedAccounts: accounts });
-  }
-}
-
 // Helper function to check if folder is user-created
 function isUserFolder(folder) {
   const systemFolders = ['Inbox', 'Sent', 'Drafts', 'Trash', 'Templates', 'Archives', 'Junk'];
@@ -417,29 +509,6 @@ function isDefaultFolder(folder) {
   return systemFolders.includes(folder.name);
 }
 
-// Helper function to get all folders recursively
-async function getAllFolders(account) {
-  const rootFolder = account.rootFolder;
-  const allFolders = [];
-  
-  async function processFolder(folder, level = 0) {
-    allFolders.push({
-      ...folder,
-      level,
-      isDefault: isDefaultFolder(folder)
-    });
-    
-    if (folder.subFolders) {
-      for (const subFolder of folder.subFolders) {
-        await processFolder(subFolder, level + 1);
-      }
-    }
-  }
-  
-  await processFolder(rootFolder);
-  return allFolders;
-}
-
 // Message classification function
 async function classifyMessage(message, accountId) {
   try {
@@ -448,23 +517,7 @@ async function classifyMessage(message, accountId) {
       subject: message.subject
     });
     
-    const modelData = await browser.storage.local.get(`model_${accountId}`);
-    if (!modelData[`model_${accountId}`]) {
-      throw new Error("No trained model found for this account");
-    }
-    
-    // Load and verify the classifier using fromJSON
-    const modelJson = JSON.parse(modelData[`model_${accountId}`]);
-    classifier = NaiveBayesClassifier.fromJSON(modelJson);
-    
-    console.log('Loaded classifier:', {
-      totalDocs: classifier.totalDocs,
-      vocabularySize: classifier.vocabulary.size,
-      folders: Object.keys(classifier.folderCounts),
-      folderCounts: classifier.folderCounts
-    });
-    
-    // Get message text and classify
+    const classifier = await loadModel(accountId);
     const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
     const words = classifier.tokenize(fullText);
     console.log('Message features:', {
@@ -588,5 +641,8 @@ window.emailArchive = {
   getAllFolders,
   getTrainedAccounts,
   getSavedFolders,
-  deleteModel
+  deleteModel,
+  saveFolderStructure,
+  loadFolderStructure,
+  getFoldersWithState
 }; 
