@@ -131,15 +131,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       classifyButton.disabled = !currentAccount;
       moveButton.disabled = true;
       
-      // If account changed, reload messages
-      if (currentAccount) {
-        await loadInboxMessages();
+      // Clear message list if no account selected
+      if (!currentAccount) {
+        const messageList = document.getElementById('messageList');
+        messageList.innerHTML = '<tr><td colspan="6">Please select an account</td></tr>';
+        status.textContent = '';
       }
+      
     } catch (error) {
       console.error('Error loading accounts:', error);
-      const status = document.getElementById('status');
       status.textContent = 'Error loading accounts: ' + error.message;
       status.className = 'error';
+      currentAccount = null;
+      classifyButton.disabled = true;
+      moveButton.disabled = true;
     }
   }
 
@@ -149,14 +154,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Account selection handler
   accountSelect.addEventListener('change', async () => {
     const accountId = accountSelect.value;
-    if (!accountId) return;
+    if (!accountId) {
+      currentAccount = null;
+      return;
+    }
     
-    const background = await browser.runtime.getBackgroundPage();
-    const accounts = await browser.accounts.list();
-    const trainedAccounts = await background.emailArchive.getTrainedAccounts();
-    
-    currentAccount = trainedAccounts.find(a => a.id === accountId);
-    await loadInboxMessages();
+    try {
+      const accounts = await browser.accounts.list();
+      currentAccount = accounts.find(a => a.id === accountId);
+      
+      if (!currentAccount) {
+        throw new Error('Selected account not found');
+      }
+      
+      classifyButton.disabled = false;
+      moveButton.disabled = true;
+      await loadInboxMessages();
+      
+    } catch (error) {
+      console.error('Error selecting account:', error);
+      status.textContent = 'Error selecting account: ' + error.message;
+      status.className = 'error';
+      currentAccount = null;
+      classifyButton.disabled = true;
+      moveButton.disabled = true;
+    }
   });
   
   // Select all checkbox handler
@@ -318,10 +340,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Load inbox messages for selected account
 async function loadInboxMessages() {
   const messageList = document.getElementById('messageList');
-  messageList.innerHTML = '';
-  messages = [];
+  const status = document.getElementById('status');
+  
+  if (!currentAccount) {
+    messageList.innerHTML = '<tr><td colspan="6">Please select an account</td></tr>';
+    status.textContent = 'No account selected';
+    status.className = 'warning';
+    return;
+  }
   
   try {
+    status.textContent = 'Loading messages...';
+    status.className = '';
+    messageList.innerHTML = '';
+    messages = [];
+    
     // Get all folders for the account
     const folders = await browser.folders.query({
       accountId: currentAccount.id,
@@ -336,7 +369,9 @@ async function loadInboxMessages() {
     let page = await browser.messages.list(inbox.id);
     
     if (!page || !page.messages) {
-      messageList.innerHTML = '<tr><td colspan="5">No messages in Inbox</td></tr>';
+      messageList.innerHTML = '<tr><td colspan="6">No messages in Inbox</td></tr>';
+      status.textContent = 'Inbox is empty';
+      status.className = 'warning';
       return;
     }
     
@@ -352,7 +387,9 @@ async function loadInboxMessages() {
     }
     
     if (messages.length === 0) {
-      messageList.innerHTML = '<tr><td colspan="5">No messages in Inbox</td></tr>';
+      messageList.innerHTML = '<tr><td colspan="6">No messages in Inbox</td></tr>';
+      status.textContent = 'Inbox is empty';
+      status.className = 'warning';
       return;
     }
     
@@ -387,13 +424,12 @@ async function loadInboxMessages() {
     });
     
     // Update status
-    const status = document.getElementById('status');
     status.textContent = `Loaded ${messages.length} messages from Inbox`;
     status.className = 'success';
+    
   } catch (error) {
     console.error('Error loading messages:', error);
-    messageList.innerHTML = '<tr><td colspan="5">Error loading messages</td></tr>';
-    const status = document.getElementById('status');
+    messageList.innerHTML = '<tr><td colspan="6">Error loading messages</td></tr>';
     status.textContent = `Error: ${error.message}`;
     status.className = 'error';
   }
