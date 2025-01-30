@@ -339,8 +339,8 @@ async function getAllFolders(account) {
       isDefault: isDefaultFolder(folder)
     });
     
-    // Get subfolders
-    const subFolders = await browser.messages.listFolders(folder);
+    // Get subfolders using the correct API
+    const subFolders = await browser.folders.getSubFolders(folder.path);
     for (const subFolder of subFolders) {
       await traverseFolder(subFolder);
     }

@@ -14,9 +14,10 @@
     "scripts": ["background/background.js"]
   },
   "permissions": [
+    "accountsRead",
+    "accountsFolders",
     "messagesRead",
     "messagesMove",
-    "accountsRead",
     "storage",
     "menus"
   ],
@@ -25,4 +26,4 @@
     "64": "icons/icon-64.png"
   },
   "content_security_policy": "script-src 'self'; object-src 'self'"
-} 
+}
