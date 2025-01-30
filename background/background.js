@@ -339,17 +339,18 @@ async function getAllFolders(account) {
       isDefault: isDefaultFolder(folder)
     });
     
-    // Get subfolders using the correct API
-    const subFolders = await browser.folders.getSubFolders(folder.path);
-    for (const subFolder of subFolders) {
-      await traverseFolder(subFolder);
+    // Process subfolders if they exist
+    if (folder.subFolders) {
+      for (const subFolder of folder.subFolders) {
+        await traverseFolder(subFolder);
+      }
     }
   }
   
-  // Get root folder
-  const rootFolder = await browser.accounts.get(account.id);
-  if (rootFolder && rootFolder.folders) {
-    for (const folder of rootFolder.folders) {
+  // Get account with full folder structure
+  const accountInfo = await browser.accounts.get(account.id, true);
+  if (accountInfo && accountInfo.folders) {
+    for (const folder of accountInfo.folders) {
       await traverseFolder(folder);
     }
   }
