@@ -1,39 +1,107 @@
 # Email Archive ML Assistant
 
-L'obiettivo di questa applicazione, che si usa come estensione di Mozilla Thunderbird, è di aiutare l'utente nella archviazione dei messaggi presenti nella posta in entrata nella varie cartelle di archivio.
-Per fare questo, l'appicazione studia come sono stati archiviati i messaggi precendenti, crea un modello di Machine Learning leggendo il contenuto delle cartelle di archivio, e utilizza questo modello per suggerire, in fase di archiviazione di un nuovo messaggio, in quale cartella inserire il nuovo messaggio.
+The objective of this application, which is used as an extension for Mozilla Thunderbird, is to assist the user in archiving messages from the inbox into various archive folders.
+To achieve this, the application studies how previous messages have been archived, creates a Machine Learning model by analyzing the contents of archive folders, and uses this model to suggest the appropriate folder for archiving a new message.
 
-L'applicazione è stata sviluppata come esercizio per verificare la possibilità di scrivere un'applicazione funzionante, con questi vincoli: 
-- il codice deve essere scritto interamente dall'Intelligenza Artificiale
-- il codice deve essere utilizzare funzioni e API che non fa parte del training dei modelli AI utilizzati
+The application was developed as an exercise to verify the feasibility of creating a functional application with the following constraints:
+- The code must be written entirely by Artificial Intelligence.
+- The code must use functions and APIs that are not part of the training data of the AI models used.
 
-## Requisiti:
-- L'applicazione deve essere completamente integrata in Mozillla Thunderbird
-- Anche il salvataggi di dati interni all'applicazione deve essere gestito tramite le API storage di Thunderbird
-- per tutte le fasi, l'applicazione esegue la sincronizzazione IMAP con il server di posta
+## Requirements:
+- The application must be fully integrated into Mozilla Thunderbird.
+- Internal data storage must be managed using Thunderbird's storage APIs.
+- For all phases, the application must synchronize IMAP with the mail server.
 
-L'applicazione è divisa in due parti:
-- Training: dove si crea il modello di Machine Learning
-- Archive: dove si utilizza il modello per suggerire la cartella di archivio e archiviare il messaggio
+The application is divided into two parts:
+- **Training:** where the Machine Learning model is created.
+- **Archive:** where the model is used to suggest the archive folder and archive the message.
 
-### Training
-- L'applicazione recupera gli account di posta elettronica presenti nel client Thunderbird
-- Per ogni account, l'applicazione recupera tutte le cartelle di archivio presenti, distinguendo tra cartelle di sistema (Inbox, Sent, Drafts, Trash, Junk, ...) e cartelle di archivio personali.
-- L'utente selezione la mailbox da allenare
-- L'applicazione presenta l'elenco delle cartelle su cui basare il modello di Machine Learning, selezionando automaticamente tutte le cartelle di personali ed escludendo le cartelle di sistema
-- Permette all'utente di cambiare la selezione iniziale
-- La selezione delle cartelle viene memorizzata nello storage interno
-- Viene creato un modello di Machine Learning per ogni mailbox selezionata
-- È possibile eliminare il modello di Machine Learning e ricrearlo
+## Training
+- The application retrieves the email accounts present in the Thunderbird client.
+- For each account, it retrieves all archive folders, distinguishing between system folders (Inbox, Sent, Drafts, Trash, Junk, etc.) and personal archive folders.
+- The user selects the mailbox to be trained.
+- The application presents a list of folders to be used for the Machine Learning model, automatically selecting all personal folders and excluding system folders.
+- The user can modify the initial selection.
+- The folder selection is stored in internal storage.
+- A Machine Learning model is created for each selected mailbox.
+- It is possible to delete and recreate the Machine Learning model.
 
-### Archive
-- L'applicazione permette di selezionare la mailbox da utilizzare per l'archiviazione, selezionando tra le mailbox per cui è stato creato un modello di Machine Learning
-- L'utente selezione una soglia di probabilità, al di sopra della quale un messaggio verrà suggerito per l'archiviazione
-- Vengono mostrati tutti i messaggi presenti nella Inbox della casella selezionata
-- L'utente può selezionare tutti o alcuni dei messaggi da classificare: assegnazione di una cartella di archivio con indicazione della confidenzialità della classificazione
-- L'utente può selezionare i messaggi da archiviare
-- I messaggi selezionati vengono spostati dalla Inbox alla cartella di archivio determinata dal modello di Machine Learning
+## Archive
+- The application allows selecting the mailbox to be used for archiving, choosing among the mailboxes for which a Machine Learning model has been created.
+- The user selects a probability threshold, above which a message will be suggested for archiving.
+- All messages present in the selected mailbox's Inbox are displayed.
+- The user can select all or some messages to be classified.
+- The selected messages are classified with an assigned archive folder and an indication of classification confidence.
+- The user can select messages to be archived.
+- The selected messages are moved from the Inbox to the archive folder determined by the Machine Learning model.
 
+## Development with AI
+The development was primarily conducted using Cursor rel. 0.45 and partially with Codeium Windsurf rel. 1.2.2, both using Anthropic Claude 3.5 Sonnet as LLM.
+To create the development plan, the initial specifications where improved using ChapGPT o1.
+
+
+### External Documentation
+Although these tools already had web search capabilities at the time, the development of this project assumed that Thunderbird documentation was not publicly available, as in the case of a closed-source project.
+For this reason, the "ThunderbirdDocScraper.py" script in the "utils" folder was used to download Thunderbird documentation in markdown format and made available to Cursor within the "_Docs\thunderbird_docs" folder.
+
+### Development Plan Creation
+
+To create the development plan, the app designer wrote the initial specifications. 
+These specifications were then used to create the development plan with ChatGPT o1.
+
+#### Initial Specifications
+```
+    # E-mail archiver
+
+    The app works as a Thunderbird plugin and helps users to archive e-mails in mailbox folders, based on previously archived e-mail
+
+    The app is divided in two part:
+    1. Archive Models training
+    2. E-mail archive
+
+    ## 1 - Archive Model Traning
+    - The Archive Model Training option is available from the Tools menu
+    - The users select one of the available mailbox
+    - The app reads the name of all the user created folders as absolute path inside the mailbox (e.g. "mailbox/folder/subfolder/sub-subfolder")
+    - The model training features of the app ignores the standard folders like Inbox, Sent, Draft, Recycle Bin
+    - When the user confirm that the training should start, 
+        - the app reads all the emails source data as the features of the Machine Learning training process (From, To, servers, Subject, Mail body) of all the user created folders except the folders that should be ignored. The attachments are also ignored and not used for the training
+        - The folder name is the target
+    - The model is saved as model_<email-address>
+
+    ## E-mail archive
+    - The E-mail archive option is available in the Tools menu
+    - When this option is selected, a new tab/Window is opened in Thunderbird
+    - The user select one mailbox from the mailboxes available. The mailboxes available are the one with a model previously created
+    - When the mailbox is selected, in the new open tab will be displayed the messages of the Inbox with this columns
+        - Select check box (start as not selected)
+        - From
+        - Date
+        - Target Folder (start as empty)
+        - Subject
+    - The user click a [classify] button
+    - The app, using the trained model, classify each e-mail adding the predicted destination folder in the Target Folder column
+    - The user select the e-mails he wants to move
+    - The user click the Move button, and the selected e-mail are moved in the folder that has been written in the Target folder column
+    - The user close the tab/Windows and the memory is freed
+```
+
+#### Development Plan with ChatGPT o1
+The development plan was created using ChapGPT o1 using the initial specifications as context.
+You can find the development plan in the file ["_Docs\DevelopmentPlan.md"](_Docs\DevelopmentPlan.md)
+
+### Development with Cursor (and Windsurf)
+
+After defining the work plan and preparing the external documentation useful for project development, the instructions were fed into Cursor with the following initial prompt:
+```
+Please crete the app described in @DevelopmentPlan.md 
+The app is about a Mozilla Thunderbird extension and in @thunderbird_docs you can find a complete documentation of the latest version of Thunderbird WebExtension API, also with some example.
+Please, keep the code as simple as possible.
+```
+
+The full list of prompt passed, step by step, to Cursor is available in the file ["_Docs\CursorPrompts.md"](_Docs\CursorPrompts.md)
+
+## Conclusion
 
 
 
