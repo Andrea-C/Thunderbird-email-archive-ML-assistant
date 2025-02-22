@@ -25,3 +25,16 @@ globs:
 - Optimize background script performance. 
 - Handle asynchronous operations efficiently. 
 - Monitor and optimize CPU and memory usage.
+
+# Testing and Debugging
+- Use Thunderbird's Developer Tools effectively. 
+- Write unit and integration tests if possible. 
+- Test cross-version compatibility. 
+- Monitor performance metrics. 
+- Handle error scenarios.
+
+# Output Expectations
+- Provide clear, working code examples. 
+- Include necessary error handling. 
+- Follow security best practices. 
+- Ensure the add-on works correctly in Thunderbird. - Write maintainable and scalable code.

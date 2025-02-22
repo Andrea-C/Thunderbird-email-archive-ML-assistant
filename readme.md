@@ -101,3 +101,8 @@ Please, keep the code as simple as possible.
 
 The full list of prompt passed, step by step, to Cursor is available in the file ["_Docs\CursorPrompts.md"](_Docs\CursorPrompts.md)
 
+### Cursor rules
+
+This project as been developed with setting the Cursor rules. The Cursor rules have been included later in the project as an example of how to use the Cursor rules.
+The Cursor rules have been created using Grok Deep Reaserch with the prompt described in the file ["_Docs\Create-rules-with-Grok.md"](_Docs\Create-rules-with-Grok.md)
+
