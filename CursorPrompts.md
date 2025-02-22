@@ -7,6 +7,29 @@ The very firs reply, after the initial prompt is included as an example
 
 After each prompt and each execution of Cursor, the app was tested, and errors and subsequent modifications were requested from Cursor with the following prompts.
 
+------------------------------------------------------------------------------
+## PROMPT for xAI Grok Deep Resarch to create the Cursor rules
+I'm developing software using Cursor editor, a VS Code clone with AI capabilities.
+To guide the AI development with Cursor is convenient to write some rules like is described here: https://docs.cursor.com/context/rules-for-ai
+
+I need to create some rule for developing a Mozilla Thunderbird addon extension
+This extension should use the Mozilla Thunderbird API that are documented here:https://webextension-api.thunderbird.net/en/stable/'
+
+The extension also need to build a Machine Learning model to classify email
+The extension should have an interface, with pages in tabs, tables, buttons, dropdown list and other UI elements
+
+Some website where is possible to find examples of rules for Cursor are:
+- https://cursor.directory/
+- https://github.com/PatrickJS/awesome-cursorrules
+
+This rule has been designed for a chrome extension, and can be some what related to our task
+https://cursor.directory/chrome-extension-development
+
+The extension will be developed using HTML and JavaScript
+
+That said, the request is:
+please create one or more rules files for Cursor to develop the Mozilla Thunderbird addon extension briefly described above
+
 
 ------------------------------------------------------------------------------
 ## FIRST PROMPT TO CURSOR

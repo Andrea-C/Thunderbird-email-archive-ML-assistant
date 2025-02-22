@@ -1,0 +1,27 @@
+---
+description: General rules for the project
+globs: 
+---
+# Code Style and Structure
+- Write clean, modular JavaScript code. 
+- Use descriptive variable names. 
+- Follow functional programming patterns. 
+- Avoid classes. 
+- Structure files logically: background, content scripts, UI pages, utils. 
+- Implement proper error handling and logging. 
+- Document code with comments.
+
+# Security and Privacy
+- Implement Content Security Policy (CSP) if applicable. 
+- Handle user data securely. 
+- Prevent XSS and injection attacks. 
+- Use secure messaging between components. 
+- Handle cross-origin requests safely. 
+- Follow best practices for data encryption. 
+- Ensure the add-on respects user privacy.
+
+# Performance and Optimization
+- Minimize resource usage and avoid memory leaks. 
+- Optimize background script performance. 
+- Handle asynchronous operations efficiently. 
+- Monitor and optimize CPU and memory usage.

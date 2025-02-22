@@ -1,0 +1,10 @@
+---
+description: Rules to implement the Machine Learning engine
+globs: 
+---
+
+# Machine Learning Integration
+- Use a JavaScript library like TensorFlow.js for machine learning tasks. 
+- Load and use a pre-trained model for email classification. 
+- Process email content efficiently. 
+- Ensure the model is accurate and efficient.

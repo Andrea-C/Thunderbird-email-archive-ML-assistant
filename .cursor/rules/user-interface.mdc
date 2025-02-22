@@ -1,0 +1,13 @@
+---
+description: Rules for the user interface and user experience
+globs: 
+---
+
+# UI and User Experience
+- Create user-friendly and responsive UI pages. 
+- Use standard HTML elements for tables, buttons, drop-down lists, etc. 
+- Provide clear user feedback. 
+- Support keyboard navigation. 
+- Ensure proper loading states. 
+- Add appropriate animations if needed.
+
