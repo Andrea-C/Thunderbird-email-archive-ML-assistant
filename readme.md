@@ -101,10 +101,3 @@ Please, keep the code as simple as possible.
 
 The full list of prompt passed, step by step, to Cursor is available in the file ["_Docs\CursorPrompts.md"](_Docs\CursorPrompts.md)
 
-## Conclusion
-
-
-
-
-
-
