@@ -1349,7 +1349,7 @@ function isUserFolder(folder) {
 // Export functions and constants for use in UI pages
 window.emailArchive = {
   // Version for debugging
-  VERSION: '2.0.0-beta3',
+  VERSION: browser.runtime.getManifest().version,
   
   // Constants
   ALGORITHM_TYPES,
