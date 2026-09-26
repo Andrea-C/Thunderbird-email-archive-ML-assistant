@@ -106,7 +106,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const summary = document.createElement('p');
     summary.className = 'evaluation-summary';
-    summary.textContent = `Accuracy ${formatPercent(report.accuracy)} · macro-F1 ${formatPercent(report.macroF1)} · ` +
+    const dateFilterNote = meta.trainingMonths ? ` · last ${meta.trainingMonths} months` : (meta.trainingMonths === 0 ? ' · all dates' : '');
+    summary.textContent = `Accuracy ${formatPercent(report.accuracy)} · macro-F1 ${formatPercent(report.macroF1)}${dateFilterNote} · ` +
       `${report.testSize} test messages (${report.holdoutPercent}% hold-out, evaluation model trained on ${report.trainSize})`;
     evaluationContent.appendChild(summary);
 
@@ -255,6 +256,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (meta.trainedAt) {
             algorithmSpan.textContent += ` · ${meta.messagesUsed} msgs · ${new Date(meta.trainedAt).toLocaleString()}`;
           }
+          if (meta.trainingMonths !== undefined) {
+            algorithmSpan.textContent += meta.trainingMonths ? ` · last ${meta.trainingMonths} months` : ' · all dates';
+          }
           if (meta.evaluation) {
             algorithmSpan.textContent += ` · accuracy ${formatPercent(meta.evaluation.accuracy)}`;
           }
@@ -319,6 +323,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
+  // Date filter input (R3-2): load / save the per-account value
+  const trainingMonthsInput = document.getElementById('trainingMonths');
+
+  async function loadTrainingSettings(accountId) {
+    try {
+      const settings = await background.emailArchive.getTrainingSettings(accountId);
+      trainingMonthsInput.value = settings.trainingMonths;
+    } catch (e) {
+      console.error('Error loading training settings:', e);
+      trainingMonthsInput.value = background.emailArchive.DEFAULT_TRAINING_MONTHS;
+    }
+  }
+
+  // Read the input as an integer >= 0 (invalid -> default)
+  function getTrainingMonths() {
+    const months = Math.floor(Number(trainingMonthsInput.value));
+    return Number.isFinite(months) && months >= 0 ? months : background.emailArchive.DEFAULT_TRAINING_MONTHS;
+  }
+
+  trainingMonthsInput.addEventListener('change', async () => {
+    trainingMonthsInput.value = getTrainingMonths();
+    if (!currentAccount) return;
+    try {
+      await background.emailArchive.saveTrainingSettings(currentAccount.id, { trainingMonths: getTrainingMonths() });
+    } catch (e) {
+      console.error('Error saving training settings:', e);
+    }
+  });
+
   // Load folders for selected account
   async function loadFolders(account) {
     try {
@@ -416,6 +449,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedAccount = accounts.find(acc => acc.id === accountSelect.value);
     if (selectedAccount) {
       currentAccount = selectedAccount;
+      await loadTrainingSettings(selectedAccount.id);
       await loadFolders(selectedAccount);
     } else {
       currentAccount = null;
@@ -468,15 +502,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Train the model with selected algorithm and options
       const includeBody = document.getElementById('includeBody').checked;
+      const trainingMonths = getTrainingMonths();
+      await background.emailArchive.saveTrainingSettings(currentAccount.id, { trainingMonths });
       const result = await background.emailArchive.trainModel(
         currentAccount, 
         selectedFolders.map(f => f.path),
         algorithmType,
-        { includeBody }
+        { includeBody, trainingMonths }
       );
       
       if (result.success) {
-        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName} (${getFeaturesDisplayName(result.features)}).`;
+        const dateFilterText = result.trainingMonths
+          ? ` ${result.messagesSkipped} older messages skipped (before ${new Date(result.cutoffDate).toLocaleDateString()}).`
+          : '';
+        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName} (${getFeaturesDisplayName(result.features)}).${dateFilterText}`;
         status.className = 'success';
         
         // Show the evaluation report of the new model

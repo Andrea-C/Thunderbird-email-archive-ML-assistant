@@ -801,7 +801,53 @@ function getCacheKey(accountId, algorithmType) {
   return `${accountId}_${algorithmType}`;
 }
 
-// Get metadata of a trained model. Models trained before rel. 3 have no
+// ----------------------------------------------------------------------------
+// Training settings (R3-2)
+// Stored per account under `settings_<accountId>`; the last value used also
+// becomes the default for other accounts (`settings_global`).
+// ----------------------------------------------------------------------------
+
+const DEFAULT_TRAINING_MONTHS = 18;   // 0 = no date limit
+const DAYS_PER_MONTH = 30.44;
+
+async function getTrainingSettings(accountId) {
+  const accountKey = `settings_${accountId}`;
+  const data = await browser.storage.local.get([accountKey, 'settings_global']);
+  return {
+    trainingMonths: DEFAULT_TRAINING_MONTHS,
+    ...(data.settings_global || {}),
+    ...(data[accountKey] || {})
+  };
+}
+
+async function saveTrainingSettings(accountId, settings) {
+  const accountKey = `settings_${accountId}`;
+  const current = await getTrainingSettings(accountId);
+  const merged = { ...current, ...settings };
+  await browser.storage.local.set({ [accountKey]: merged, settings_global: merged });
+  return merged;
+}
+
+// Normalize a months value: integer >= 0 (0 = no limit)
+function normalizeTrainingMonths(value) {
+  const months = Math.floor(Number(value));
+  return Number.isFinite(months) && months > 0 ? months : 0;
+}
+
+// Cutoff date for a months value (null = no limit)
+function getTrainingCutoff(months, now = new Date()) {
+  return months > 0 ? new Date(now.getTime() - months * DAYS_PER_MONTH * 24 * 3600 * 1000) : null;
+}
+
+// True if a message is older than the cutoff. Messages without a valid date
+// are kept (never silently dropped).
+function isOlderThanCutoff(message, cutoff) {
+  if (!cutoff) return false;
+  const time = new Date(message.date).getTime();
+  return Number.isFinite(time) && time < cutoff.getTime();
+}
+
+// Get metadata of a trained model.Models trained before rel. 3 have no
 // metadata: they were effectively trained on headers only.
 async function getModelMeta(accountId, algorithmType) {
   const metaKey = getModelMetaKey(accountId, algorithmType);
@@ -1486,6 +1532,9 @@ function evaluationToMarkdown(meta, accountName = '') {
   lines.push('');
   lines.push(`- Algorithm: ${meta.algorithmType || '?'} · features: ${meta.features}`);
   lines.push(`- Trained: ${meta.trainedAt || '?'} · messages: ${meta.messagesUsed}`);
+  lines.push(`- Date filter: ${meta.trainingMonths
+    ? `last ${meta.trainingMonths} months (since ${String(meta.cutoffDate).slice(0, 10)}), ${meta.messagesSkipped} older messages skipped`
+    : 'none (all messages)'}`);
   lines.push(`- Hold-out: ${report.holdoutPercent}% → ${report.testSize} test messages, evaluation model trained on ${report.trainSize}`);
   lines.push(`- **Accuracy: ${pct(report.accuracy)}** · macro-F1: ${pct(report.macroF1)}`);
   if (report.calibration) {
@@ -1541,9 +1590,17 @@ function yieldToEventLoop() {
 // options.evaluate (default true): hold-out evaluation. In the same pass a
 // second "evaluation" classifier is trained on ~80% of the messages and then
 // tested on the other ~20%; the saved production model uses 100%.
+// options.trainingMonths: use only messages newer than N months (0 = all;
+// default DEFAULT_TRAINING_MONTHS). Older messages are skipped before their
+// body is read.
 async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TYPES.NAIVE_BAYES, options = {}) {
   try {
     const includeBody = options.includeBody !== false;
+    const trainingMonths = options.trainingMonths === undefined
+      ? DEFAULT_TRAINING_MONTHS
+      : normalizeTrainingMonths(options.trainingMonths);
+    const cutoff = getTrainingCutoff(trainingMonths);
+    let skippedMessages = 0;       // older than the cutoff
     const evaluate = options.evaluate !== false;
     const features = includeBody ? FEATURE_SETS.HEADERS_BODY : FEATURE_SETS.HEADERS;
 
@@ -1614,12 +1671,16 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       
       while (page) {
         if (page.messages && Array.isArray(page.messages)) {
+          // Date filter first, so old messages cost no body fetch
+          const recentMessages = page.messages.filter(m => !isOlderThanCutoff(m, cutoff));
+          skippedMessages += page.messages.length - recentMessages.length;
+
           // list() returns headers only: fetch the bodies of this page in parallel
           const bodies = includeBody
-            ? await mapWithConcurrency(page.messages, BODY_FETCH_CONCURRENCY, m => getMessageBodyText(m.id))
+            ? await mapWithConcurrency(recentMessages, BODY_FETCH_CONCURRENCY, m => getMessageBodyText(m.id))
             : [];
 
-          for (const [messageIndex, message] of page.messages.entries()) {
+          for (const [messageIndex, message] of recentMessages.entries()) {
             try {
               const fullText = buildMessageText(message, bodies[messageIndex] || '');
               classifier.train(fullText, folderPath);
@@ -1646,7 +1707,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
                   currentFolder: folderPath
                 },
                 messageProgress: {
-                  current: processedMessages,
+                  // skipped messages count as done, so the total is reached
+                  current: processedMessages + skippedMessages,
                   total: totalMessages,
                   currentFolder: folderPath
                 }
@@ -1667,7 +1729,12 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
     }
     
     if (processedMessages === 0) {
-      throw new Error("No messages could be processed");
+      throw new Error(skippedMessages > 0
+        ? `No messages newer than ${trainingMonths} months (${skippedMessages} older messages skipped)`
+        : "No messages could be processed");
+    }
+    if (cutoff) {
+      console.log(`Date filter: ${trainingMonths} months (since ${cutoff.toISOString().slice(0, 10)}), ${skippedMessages} older messages skipped`);
     }
     
     // Finalize training (important for TF-IDF to calculate IDF scores)
@@ -1719,6 +1786,9 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       features,
       trainedAt: new Date().toISOString(),
       messagesUsed: processedMessages,
+      trainingMonths,
+      cutoffDate: cutoff ? cutoff.toISOString() : null,
+      messagesSkipped: skippedMessages,
       evaluation,
       calibration
     });
@@ -1737,6 +1807,9 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
     return { 
       success: true, 
       messagesProcessed: processedMessages,
+      messagesSkipped: skippedMessages,
+      trainingMonths,
+      cutoffDate: cutoff ? cutoff.toISOString() : null,
       algorithm: algorithmType,
       features,
       evaluation
@@ -1991,6 +2064,9 @@ window.emailArchive = {
   getAvailableModels,
   getModelMeta,
   evaluationToMarkdown,
+  getTrainingSettings,
+  saveTrainingSettings,
+  DEFAULT_TRAINING_MONTHS,
   hasTrainedModel,
   deleteModel,
   getModelAlgorithm

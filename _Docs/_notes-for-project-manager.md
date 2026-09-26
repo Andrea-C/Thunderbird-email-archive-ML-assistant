@@ -23,13 +23,13 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 | Status | Owner | Task |
 |---|---|---|
 | done | Claude | R3-1 Commit 2.0-beta, tag, branch `rel-3`, rename + version bump |
-| todo | Claude | R3-2 Training date filter (default 18 months) |
+| done | Claude | R3-2 Training date filter (default 18 months) |
 | todo | Claude | R3-3 Persistent "exclude from training" per folder |
 | done | Claude | Fix: folder selection remembered per account (across trainings, restarts, updates) |
 | done | Claude | R3-4 Fix training/classification feature asymmetry (body default) |
 | done | Claude | R3-5 Hold-out evaluation report |
 | done | Claude | Calibrated confidence (threshold = real probability of being right) |
-| todo | PM (Andrea) | Retrain yahoo.it (body on), copy report: check the ≥80% row (target ≥95% precision, ≥60% coverage) |
+| todo | PM (Andrea) | Retrain yahoo.it 4 times (body on/off × 18 months / 0 = all), save the 4 reports in `_Docs/reports/`; check the ≥80% row (target ≥95% precision, ≥60% coverage) |
 | todo | PM (Andrea) | Clean folders: duplicates (Commercialista, Medicina), year folders (Nota spese), tiny folders; then re-measure body vs no body |
 | todo | Claude | R3-6 Sender-priority rule |
 | todo | Claude | R3-7 Shift+click range selection |

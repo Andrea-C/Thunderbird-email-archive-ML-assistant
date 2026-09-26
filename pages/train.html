@@ -188,6 +188,15 @@
       color: #383d41;
     }
     
+    .training-months {
+      margin-top: 10px;
+    }
+
+    .training-months input {
+      width: 5em;
+      margin: 0 4px;
+    }
+
     .evaluation-panel {
       margin-top: 20px;
       padding: 15px;
@@ -312,6 +321,12 @@
           <span class="algorithm-name">Include message body</span>
           <span class="algorithm-desc">Reads every message (slower). Uncheck to train on sender + subject only.</span>
         </label>
+      </div>
+      <div class="training-months">
+        <label for="trainingMonths">Use only messages newer than</label>
+        <input type="number" id="trainingMonths" min="0" max="600" step="1" value="18">
+        <label for="trainingMonths">months</label>
+        <div class="algorithm-desc">0 = all messages. Remembered per account; applies to the next training.</div>
       </div>
     </div>
     
