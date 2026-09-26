@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hold-out evaluation report** (R3-5): every training also measures the model. About 20% of the messages (chosen by a hash of the Message-ID, so the split is identical on every run) are kept out of a second "evaluation" model trained in the same pass; that model then predicts them. The saved model is still trained on 100%. Report: accuracy, macro-F1, coverage and precision above confidence thresholds 50-95% (80% highlighted), top 20 confusions (actual → predicted), per-folder precision/recall/F1 with train/test counts (⚠ fewer than 5 test messages). Shown in the Training tab after training and via a "Report" button per model; accuracy shown in the Trained Models list; "Copy report as Markdown" button. Stored in the model metadata.
 - **Message body in training** (default on): Training tab option "Include message body". Bodies are fetched with `messages.getFull()` (8 in parallel), quoted replies/signatures are dropped (forwarded content is kept, text attachments are ignored, HTML-only mails are converted keeping word boundaries), text is truncated to 2,000 characters. Unchecking it trains on sender + subject only (fast).
 - **Model metadata** (`modelMeta_<accountId>_<algorithm>`): feature set, training date, messages used, model size. Shown in the Trained Models list. Classification always uses the feature set the model was trained with; models trained before 3.0 are treated as sender + subject.
 

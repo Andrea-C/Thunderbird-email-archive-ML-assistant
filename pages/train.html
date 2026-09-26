@@ -188,6 +188,64 @@
       color: #383d41;
     }
     
+    .evaluation-panel {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+
+    .evaluation-panel summary {
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .evaluation-panel h4 {
+      margin: 14px 0 6px 0;
+    }
+
+    .evaluation-summary {
+      margin: 10px 0;
+      font-size: 1.05em;
+    }
+
+    .evaluation-table {
+      border-collapse: collapse;
+      font-size: 0.9em;
+    }
+
+    .evaluation-table th,
+    .evaluation-table td {
+      border: 1px solid #ddd;
+      padding: 3px 8px;
+      text-align: left;
+    }
+
+    .evaluation-table td.num {
+      text-align: right;
+    }
+
+    .evaluation-table tr.highlight {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+
+    .evaluation-table tr.insufficient {
+      color: #999;
+    }
+
+    #copyReportButton {
+      width: auto;
+      margin-top: 10px;
+    }
+
+    #reportFallback {
+      width: 100%;
+      height: 200px;
+      margin-top: 8px;
+      font-family: monospace;
+    }
+
     .model-algorithm {
       font-size: 0.8em;
       color: #666;
@@ -282,6 +340,13 @@
     </div>
     
     <div id="status"></div>
+
+    <details id="evaluationPanel" class="evaluation-panel" open hidden>
+      <summary id="evaluationTitle">Evaluation report</summary>
+      <div id="evaluationContent"></div>
+      <button id="copyReportButton">Copy report as Markdown</button>
+      <textarea id="reportFallback" readonly hidden></textarea>
+    </details>
   </div>
 
   <script src="train.js"></script>

@@ -1218,19 +1218,190 @@ async function mapWithConcurrency(items, limit, asyncFn) {
 }
 
 // ============================================================================
+// EVALUATION - hold-out test of the model (read-only, nothing is moved)
+// ============================================================================
+
+const HOLDOUT_PERCENT = 20;                 // share of messages kept for testing
+const EVAL_THRESHOLDS = [50, 60, 70, 80, 90, 95];
+const DEFAULT_CONFIDENCE_THRESHOLD = 80;    // matches the Archive tab default
+const MIN_TEST_SUPPORT = 5;                 // fewer test messages -> "insufficient data"
+const MAX_REPORTED_CONFUSIONS = 20;
+
+// 32-bit FNV-1a hash (deterministic, no randomness)
+function hashString(text) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+// Deterministic train/test assignment: the Message-ID header is stable across
+// runs and restarts (message.id is not), so the same message always lands on
+// the same side
+function isHoldOutMessage(message, folderPath) {
+  const key = message.headerMessageId || `${folderPath}#${message.id}`;
+  return hashString(key) % 100 < HOLDOUT_PERCENT;
+}
+
+// Compute the evaluation report from test predictions
+// testResults: [{ actual, predicted, confidence (0-100) }]
+// trainCounts: { folder: number of evaluation-training messages }
+function computeEvaluation(testResults, trainCounts) {
+  const total = testResults.length;
+  const correct = testResults.filter(r => r.predicted === r.actual).length;
+
+  // Per-folder counts
+  const stats = {};  // folder -> { support, predicted, truePositives }
+  const ensure = folder => (stats[folder] = stats[folder] || { support: 0, predicted: 0, truePositives: 0 });
+  // List every trained folder, also those with no test message (flagged
+  // as insufficient data)
+  Object.keys(trainCounts).forEach(ensure);
+  const confusions = {};  // "actual\u0000predicted" -> count
+
+  for (const result of testResults) {
+    ensure(result.actual).support++;
+    if (result.predicted) ensure(result.predicted).predicted++;
+    if (result.predicted === result.actual) {
+      stats[result.actual].truePositives++;
+    } else {
+      const key = `${result.actual}\u0000${result.predicted || '(none)'}`;
+      confusions[key] = (confusions[key] || 0) + 1;
+    }
+  }
+
+  const perFolder = Object.entries(stats).map(([folder, s]) => {
+    const precision = s.predicted > 0 ? s.truePositives / s.predicted : null;
+    const recall = s.support > 0 ? s.truePositives / s.support : null;
+    const f1 = precision && recall ? (2 * precision * recall) / (precision + recall) : 0;
+    return {
+      folder,
+      trainCount: trainCounts[folder] || 0,
+      support: s.support,
+      predicted: s.predicted,
+      precision,
+      recall,
+      f1,
+      insufficient: s.support < MIN_TEST_SUPPORT
+    };
+  }).sort((a, b) => b.support - a.support || a.folder.localeCompare(b.folder));
+
+  // Macro-F1 over folders that have test messages
+  const withSupport = perFolder.filter(f => f.support > 0);
+  const macroF1 = withSupport.length
+    ? withSupport.reduce((sum, f) => sum + f.f1, 0) / withSupport.length
+    : 0;
+
+  // What matters to the user: "if I move everything >= threshold, how often
+  // is it wrong?" -> coverage and precision above each threshold
+  const thresholds = EVAL_THRESHOLDS.map(threshold => {
+    const above = testResults.filter(r => r.confidence >= threshold);
+    const aboveCorrect = above.filter(r => r.predicted === r.actual).length;
+    return {
+      threshold,
+      count: above.length,
+      coverage: total ? above.length / total : 0,
+      precision: above.length ? aboveCorrect / above.length : null
+    };
+  });
+
+  const topConfusions = Object.entries(confusions)
+    .map(([key, count]) => {
+      const [actual, predicted] = key.split('\u0000');
+      return { actual, predicted, count };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, MAX_REPORTED_CONFUSIONS);
+
+  return {
+    holdoutPercent: HOLDOUT_PERCENT,
+    testSize: total,
+    trainSize: Object.values(trainCounts).reduce((sum, n) => sum + n, 0),
+    accuracy: total ? correct / total : 0,
+    macroF1,
+    defaultThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
+    thresholds,
+    perFolder,
+    topConfusions,
+    minTestSupport: MIN_TEST_SUPPORT
+  };
+}
+
+// Render an evaluation report (with model metadata) as Markdown
+function evaluationToMarkdown(meta, accountName = '') {
+  const report = meta && meta.evaluation;
+  if (!report) return 'No evaluation report for this model (train it again with version 3.0 or later).';
+
+  const pct = value => (value === null || value === undefined ? '–' : `${(value * 100).toFixed(1)}%`);
+  const cell = text => String(text).replace(/\|/g, '\\|');
+  const lines = [];
+
+  lines.push(`## Evaluation report${accountName ? ` — ${cell(accountName)}` : ''}`);
+  lines.push('');
+  lines.push(`- Algorithm: ${meta.algorithmType || '?'} · features: ${meta.features}`);
+  lines.push(`- Trained: ${meta.trainedAt || '?'} · messages: ${meta.messagesUsed}`);
+  lines.push(`- Hold-out: ${report.holdoutPercent}% → ${report.testSize} test messages, evaluation model trained on ${report.trainSize}`);
+  lines.push(`- **Accuracy: ${pct(report.accuracy)}** · macro-F1: ${pct(report.macroF1)}`);
+  lines.push('');
+  lines.push('### Confidence threshold');
+  lines.push('');
+  lines.push('| Threshold | Coverage | Messages | Precision above threshold |');
+  lines.push('|---:|---:|---:|---:|');
+  for (const t of report.thresholds) {
+    const mark = t.threshold === report.defaultThreshold ? ' ◀' : '';
+    lines.push(`| ≥ ${t.threshold}%${mark} | ${pct(t.coverage)} | ${t.count} | ${pct(t.precision)} |`);
+  }
+  lines.push('');
+  lines.push('### Top confusions (actual → predicted)');
+  lines.push('');
+  if (report.topConfusions.length === 0) {
+    lines.push('None.');
+  } else {
+    lines.push('| Actual folder | Predicted folder | Count |');
+    lines.push('|---|---|---:|');
+    for (const c of report.topConfusions) {
+      lines.push(`| ${cell(c.actual)} | ${cell(c.predicted)} | ${c.count} |`);
+    }
+  }
+  lines.push('');
+  lines.push(`### Per folder (⚠ = fewer than ${report.minTestSupport} test messages)`);
+  lines.push('');
+  lines.push('| Folder | Train | Test | Precision | Recall | F1 |');
+  lines.push('|---|---:|---:|---:|---:|---:|');
+  for (const f of report.perFolder) {
+    lines.push(`| ${cell(f.folder)}${f.insufficient ? ' ⚠' : ''} | ${f.trainCount} | ${f.support} | ${pct(f.precision)} | ${pct(f.recall)} | ${pct(f.f1)} |`);
+  }
+  return lines.join('\n');
+}
+
+// Let the event loop run (keeps the UI and progress messages responsive
+// during long synchronous loops)
+function yieldToEventLoop() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// ============================================================================
 // TRAINING
 // ============================================================================
 
 // Training function
 // options.includeBody (default true): train on sender + subject + body;
 // false trains on sender + subject only (much faster, no getFull() calls)
+// options.evaluate (default true): hold-out evaluation. In the same pass a
+// second "evaluation" classifier is trained on ~80% of the messages and then
+// tested on the other ~20%; the saved production model uses 100%.
 async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TYPES.NAIVE_BAYES, options = {}) {
   try {
     const includeBody = options.includeBody !== false;
+    const evaluate = options.evaluate !== false;
     const features = includeBody ? FEATURE_SETS.HEADERS_BODY : FEATURE_SETS.HEADERS;
 
     // Create classifier based on selected algorithm
     const classifier = createClassifier(algorithmType);
+    const evalClassifier = evaluate ? createClassifier(algorithmType) : null;
+    const testSet = [];        // held-out messages: { text, folder }
+    const evalTrainCounts = {}; // folder -> messages used to train evalClassifier
     console.log(`Training with algorithm: ${algorithmType}, features: ${features}`);
     
     let totalFolders = selectedFolders.length;
@@ -1302,6 +1473,14 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
             try {
               const fullText = buildMessageText(message, bodies[messageIndex] || '');
               classifier.train(fullText, folderPath);
+              if (evaluate) {
+                if (isHoldOutMessage(message, folderPath)) {
+                  testSet.push({ text: fullText, folder: folderPath });
+                } else {
+                  evalClassifier.train(fullText, folderPath);
+                  evalTrainCounts[folderPath] = (evalTrainCounts[folderPath] || 0) + 1;
+                }
+              }
               processedMessages++;
               
               // Send progress update
@@ -1342,11 +1521,35 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       classifier.finalizeTraining();
     }
     
+    // Hold-out evaluation (read-only): predict the test set with the
+    // evaluation classifier, which never saw those messages
+    let evaluation = null;
+    if (evaluate && testSet.length > 0 && Object.keys(evalTrainCounts).length > 0) {
+      if (typeof evalClassifier.finalizeTraining === 'function') {
+        browser.runtime.sendMessage({ type: 'evaluation-progress', current: 0, total: testSet.length });
+        await yieldToEventLoop();
+        evalClassifier.finalizeTraining();
+      }
+      const testResults = [];
+      for (const [testIndex, testItem] of testSet.entries()) {
+        const prediction = evalClassifier.predictWithConfidence(testItem.text);
+        testResults.push({ actual: testItem.folder, predicted: prediction.folder, confidence: prediction.confidence });
+        if (testIndex % 250 === 0 || testIndex === testSet.length - 1) {
+          browser.runtime.sendMessage({ type: 'evaluation-progress', current: testIndex + 1, total: testSet.length });
+          await yieldToEventLoop();
+        }
+      }
+      evaluation = computeEvaluation(testResults, evalTrainCounts);
+      console.log(`Evaluation: accuracy ${(evaluation.accuracy * 100).toFixed(1)}% on ${evaluation.testSize} held-out messages`);
+    }
+    
     // Save trained model with its metadata
     await saveModel(account.id, classifier, {
+      algorithmType,
       features,
       trainedAt: new Date().toISOString(),
-      messagesUsed: processedMessages
+      messagesUsed: processedMessages,
+      evaluation
     });
     
     // Note: the folder selection is saved by the Training tab (all folders
@@ -1364,7 +1567,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       success: true, 
       messagesProcessed: processedMessages,
       algorithm: algorithmType,
-      features
+      features,
+      evaluation
     };
   } catch (error) {
     console.error('Training error:', error);
@@ -1613,6 +1817,7 @@ window.emailArchive = {
   getTrainedAccountsWithAlgorithms,
   getAvailableModels,
   getModelMeta,
+  evaluationToMarkdown,
   hasTrainedModel,
   deleteModel,
   getModelAlgorithm

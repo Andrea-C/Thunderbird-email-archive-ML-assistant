@@ -19,6 +19,41 @@ function getFeaturesDisplayName(features) {
   return features === 'headers+body' ? 'sender + subject + body' : 'sender + subject';
 }
 
+// Format a 0-1 ratio as a percentage ('–' when not available)
+function formatPercent(value) {
+  return value === null || value === undefined ? '–' : `${(value * 100).toFixed(1)}%`;
+}
+
+// Build a table element; rows are { className, cells: [{ text, num }] }
+function buildEvaluationTable(headers, rows) {
+  const table = document.createElement('table');
+  table.className = 'evaluation-table';
+  const headRow = table.createTHead().insertRow();
+  for (const header of headers) {
+    const th = document.createElement('th');
+    th.textContent = header;
+    headRow.appendChild(th);
+  }
+  const body = table.createTBody();
+  for (const row of rows) {
+    const tr = body.insertRow();
+    if (row.className) tr.className = row.className;
+    for (const cell of row.cells) {
+      const td = tr.insertCell();
+      td.textContent = cell.text;
+      if (cell.num) td.className = 'num';
+    }
+  }
+  return table;
+}
+
+// Build a section title element
+function buildHeading(text) {
+  const heading = document.createElement('h4');
+  heading.textContent = text;
+  return heading;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Get DOM elements
   const accountSelect = document.getElementById('accountSelect');
@@ -29,6 +64,116 @@ document.addEventListener('DOMContentLoaded', async () => {
   const folderCount = document.getElementById('folderCount');
   const messageCount = document.getElementById('messageCount');
   const currentFolderEl = document.getElementById('currentFolder');
+  const evaluationPanel = document.getElementById('evaluationPanel');
+  const evaluationTitle = document.getElementById('evaluationTitle');
+  const evaluationContent = document.getElementById('evaluationContent');
+  const copyReportButton = document.getElementById('copyReportButton');
+  const reportFallback = document.getElementById('reportFallback');
+  let currentReportMarkdown = '';
+  let shownReportModel = null;  // { accountId, algorithmType } of the report on screen
+  
+  // Hide the report panel (optionally only if it shows the given model)
+  function hideEvaluationReport(accountId = null, algorithmType = null) {
+    if (accountId && shownReportModel &&
+        (shownReportModel.accountId !== accountId || shownReportModel.algorithmType !== algorithmType)) {
+      return;
+    }
+    evaluationPanel.hidden = true;
+    shownReportModel = null;
+  }
+
+  // Show the evaluation report stored in a model's metadata
+  function showEvaluationReport(meta, accountName, accountId) {
+    shownReportModel = { accountId, algorithmType: meta.algorithmType };
+    const report = meta && meta.evaluation;
+    evaluationContent.replaceChildren();
+    reportFallback.hidden = true;
+    evaluationPanel.hidden = false;
+    evaluationPanel.open = true;
+    evaluationTitle.textContent = `Evaluation report — ${accountName} · ${getAlgorithmDisplayName(meta.algorithmType)} · ${getFeaturesDisplayName(meta.features)}`;
+    currentReportMarkdown = background.emailArchive.evaluationToMarkdown(meta, accountName);
+
+    if (!report) {
+      const note = document.createElement('p');
+      note.textContent = meta.trainedAt
+        ? 'No evaluation report: too few messages to hold some out for testing.'
+        : 'No evaluation report: this model was trained before version 3.0, train it again to get one.';
+      evaluationContent.appendChild(note);
+      copyReportButton.hidden = true;
+      return;
+    }
+    copyReportButton.hidden = false;
+
+    const summary = document.createElement('p');
+    summary.className = 'evaluation-summary';
+    summary.textContent = `Accuracy ${formatPercent(report.accuracy)} · macro-F1 ${formatPercent(report.macroF1)} · ` +
+      `${report.testSize} test messages (${report.holdoutPercent}% hold-out, evaluation model trained on ${report.trainSize})`;
+    evaluationContent.appendChild(summary);
+
+    // Threshold table: the numbers that matter for "Move Selected"
+    evaluationContent.appendChild(buildHeading('Confidence threshold — share of messages above it, and how often they are right'));
+    evaluationContent.appendChild(buildEvaluationTable(
+      ['Threshold', 'Coverage', 'Messages', 'Precision above threshold'],
+      report.thresholds.map(t => ({
+        className: t.threshold === report.defaultThreshold ? 'highlight' : '',
+        cells: [
+          { text: `≥ ${t.threshold}%` },
+          { text: formatPercent(t.coverage), num: true },
+          { text: String(t.count), num: true },
+          { text: formatPercent(t.precision), num: true }
+        ]
+      }))
+    ));
+
+    evaluationContent.appendChild(buildHeading('Top confusions (actual → predicted)'));
+    if (report.topConfusions.length === 0) {
+      const none = document.createElement('p');
+      none.textContent = 'None.';
+      evaluationContent.appendChild(none);
+    } else {
+      evaluationContent.appendChild(buildEvaluationTable(
+        ['Actual folder', 'Predicted folder', 'Count'],
+        report.topConfusions.map(c => ({
+          cells: [{ text: c.actual }, { text: c.predicted }, { text: String(c.count), num: true }]
+        }))
+      ));
+    }
+
+    // Per-folder details (long list): collapsed by default
+    const perFolder = document.createElement('details');
+    const perFolderSummary = document.createElement('summary');
+    perFolderSummary.textContent = `Per folder (${report.perFolder.length} folders; grey ⚠ = fewer than ${report.minTestSupport} test messages)`;
+    perFolder.appendChild(perFolderSummary);
+    perFolder.appendChild(buildEvaluationTable(
+      ['Folder', 'Train', 'Test', 'Precision', 'Recall', 'F1'],
+      report.perFolder.map(f => ({
+        className: f.insufficient ? 'insufficient' : '',
+        cells: [
+          { text: f.folder + (f.insufficient ? ' ⚠' : '') },
+          { text: String(f.trainCount), num: true },
+          { text: String(f.support), num: true },
+          { text: formatPercent(f.precision), num: true },
+          { text: formatPercent(f.recall), num: true },
+          { text: formatPercent(f.f1), num: true }
+        ]
+      }))
+    ));
+    evaluationContent.appendChild(perFolder);
+  }
+
+  // Copy the current report as Markdown (fallback: show it for manual copy)
+  copyReportButton.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(currentReportMarkdown);
+      status.textContent = 'Report copied to the clipboard as Markdown.';
+      status.className = 'success';
+    } catch (error) {
+      console.warn('Clipboard write failed, showing the report for manual copy:', error);
+      reportFallback.value = currentReportMarkdown;
+      reportFallback.hidden = false;
+      reportFallback.select();
+    }
+  });
   
   let accounts = [];
   let background = null;
@@ -103,6 +248,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (meta.trainedAt) {
             algorithmSpan.textContent += ` · ${meta.messagesUsed} msgs · ${new Date(meta.trainedAt).toLocaleString()}`;
           }
+          if (meta.evaluation) {
+            algorithmSpan.textContent += ` · accuracy ${formatPercent(meta.evaluation.accuracy)}`;
+          }
           
           infoDiv.appendChild(nameSpan);
           infoDiv.appendChild(algorithmSpan);
@@ -113,6 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (confirm(`Delete ${getAlgorithmDisplayName(algorithmType)} model for ${account.name}?`)) {
               try {
                 await background.emailArchive.deleteModel(accountId, algorithmType);
+                hideEvaluationReport(accountId, algorithmType);
                 updateModelsList();
               } catch (e) {
                 console.error('Error deleting model:', e);
@@ -122,7 +271,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           };
           
+          const reportBtn = document.createElement('button');
+          reportBtn.textContent = 'Report';
+          reportBtn.disabled = !meta.evaluation;
+          reportBtn.title = meta.evaluation ? 'Show the evaluation report' : 'No report: train this model again';
+          reportBtn.onclick = () => showEvaluationReport({ algorithmType, ...meta }, account.name, accountId);
+
           div.appendChild(infoDiv);
+          div.appendChild(reportBtn);
           div.appendChild(deleteBtn);
           modelsList.appendChild(div);
         }
@@ -249,6 +405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Handle account selection change
   accountSelect.addEventListener('change', async () => {
+    hideEvaluationReport();
     const selectedAccount = accounts.find(acc => acc.id === accountSelect.value);
     if (selectedAccount) {
       currentAccount = selectedAccount;
@@ -281,6 +438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const algorithmName = getAlgorithmDisplayName(algorithmType);
       
       status.textContent = `Training with ${algorithmName}...`;
+      hideEvaluationReport();
       status.className = '';
       
       // Reset progress display
@@ -314,6 +472,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName} (${getFeaturesDisplayName(result.features)}).`;
         status.className = 'success';
         
+        // Show the evaluation report of the new model
+        try {
+          const meta = await background.emailArchive.getModelMeta(currentAccount.id, algorithmType);
+          showEvaluationReport({ algorithmType, ...meta }, currentAccount.name, currentAccount.id);
+        } catch (reportError) {
+          console.error('Could not show the evaluation report:', reportError);
+        }
+        
         // Update the models list
         await updateModelsList();
       }
@@ -333,6 +499,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       folderCount.textContent = `${folderProgress.current} / ${folderProgress.total}`;
       messageCount.textContent = `${messageProgress.current} / ${messageProgress.total}`;
       currentFolderEl.textContent = `Current folder: ${folderProgress.currentFolder}`;
+    } else if (message.type === 'evaluation-progress') {
+      currentFolderEl.textContent = `Evaluating on held-out messages: ${message.current} / ${message.total}`;
+      currentFolderEl.className = 'sync-status';
     } else if (message.type === 'folder-sync-start') {
       currentFolderEl.textContent = `Syncing folder: ${message.folder}...`;
       currentFolderEl.className = 'sync-status warning';
