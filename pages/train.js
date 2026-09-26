@@ -110,6 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       `${report.testSize} test messages (${report.holdoutPercent}% hold-out, evaluation model trained on ${report.trainSize})`;
     evaluationContent.appendChild(summary);
 
+    const calibrationNote = document.createElement('p');
+    calibrationNote.textContent = report.calibration
+      ? `Confidence calibrated on ${report.calibration.samples} test messages (score: ${report.calibration.score}, ` +
+        `separates right from wrong with AUC ${report.calibration.auc.toFixed(3)}); the threshold table is measured on the other ${report.thresholdSampleSize}.`
+      : 'Confidence not calibrated (too few test messages): the percentages are the classifier\'s own and tend to be overconfident.';
+    evaluationContent.appendChild(calibrationNote);
+
     // Threshold table: the numbers that matter for "Move Selected"
     evaluationContent.appendChild(buildHeading('Confidence threshold — share of messages above it, and how often they are right'));
     evaluationContent.appendChild(buildEvaluationTable(

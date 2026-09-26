@@ -30,6 +30,18 @@ const BODY_MAX_CHARS = 2000;        // body text kept per message after cleaning
 const BODY_FETCH_CONCURRENCY = 8;   // parallel getFull() calls (training and classification)
 const MAX_TOKEN_LENGTH = 40;
 
+// Gap between the best and the second-best folder score (any classifier),
+// used as the raw input of the calibrated confidence
+function marginInfo(scores, tokenCount) {
+  const ranked = Object.values(scores).filter(isFinite).sort((a, b) => b - a);
+  let margin = 0;
+  if (ranked.length > 1) margin = ranked[0] - ranked[1];
+  else if (ranked.length === 1) margin = MAX_MARGIN;   // only one folder: no competitor
+  return { margin: Math.min(margin, MAX_MARGIN), tokenCount };
+}
+
+const MAX_MARGIN = 1e6;
+
 // ============================================================================
 // BASE CLASSIFIER - Shared tokenization logic
 // ============================================================================
@@ -196,10 +208,13 @@ class NaiveBayesClassifier extends BaseClassifier {
     }
     
     const confidence = totalProb > 0 ? Math.round(bestProb * 100) : 0;
-    
+
     return {
       folder: bestFolder,
-      confidence: confidence
+      confidence: confidence,
+      // Inputs for calibrated confidence: log-score gap between the best and
+      // the second-best folder, and the number of tokens of the text
+      ...marginInfo(scores, words.length)
     };
   }
 
@@ -370,8 +385,8 @@ class TFIDFNaiveBayesClassifier extends BaseClassifier {
     // Find maximum score for numerical stability
     const scoreValues = Object.values(scores);
     if (scoreValues.length === 0) {
-      return { folder: null, confidence: 0 };
-    }
+      return { folder: null, confidence: 0, margin: 0, tokenCount: words.length };
+}
     
     const maxScore = Math.max(...scoreValues);
     
@@ -403,10 +418,13 @@ class TFIDFNaiveBayesClassifier extends BaseClassifier {
     }
     
     const confidence = totalProb > 0 ? Math.round(bestProb * 100) : 0;
-    
+
     return {
       folder: bestFolder,
-      confidence: confidence
+      confidence: confidence,
+      // Inputs for calibrated confidence: log-score gap between the best and
+      // the second-best folder, and the number of tokens of the text
+      ...marginInfo(scores, words.length)
     };
   }
 
@@ -713,10 +731,11 @@ class SVMClassifier extends BaseClassifier {
     // Use the higher of the two confidence measures
     // This gives better UX - predictions that are clearly better get high confidence
     const confidence = Math.max(marginConfidence, softmaxConfidence);
-    
+
     return {
       folder: bestFolder,
-      confidence: confidence
+      confidence: confidence,
+      ...marginInfo(scores, Object.keys(vector).length)
     };
   }
 
@@ -1245,10 +1264,131 @@ function isHoldOutMessage(message, folderPath) {
   return hashString(key) % 100 < HOLDOUT_PERCENT;
 }
 
+// ----------------------------------------------------------------------------
+// Confidence calibration
+//
+// The softmax confidence of Naive Bayes saturates (almost every message gets
+// 95-100%, right or wrong), so it cannot separate good from bad predictions.
+// Instead we use the score gap between the best and second-best folder,
+// optionally normalized by text length, and map it with an isotonic
+// (monotone) regression fitted on half of the hold-out set to the observed
+// probability of being right. "80%" then means "right about 80% of the time".
+// The other half of the hold-out set measures the result (report thresholds).
+// ----------------------------------------------------------------------------
+
+const CALIBRATION_MIN_SAMPLES = 50;
+
+// Candidate raw confidence scores; the one that best separates right from
+// wrong predictions (highest AUC on the calibration half) is chosen
+const CONFIDENCE_SCORES = {
+  margin: r => r.margin,
+  marginPerToken: r => r.margin / Math.max(r.tokenCount || 0, 1),
+  marginPerSqrtToken: r => r.margin / Math.sqrt(Math.max(r.tokenCount || 0, 1))
+};
+
+// Second independent split of the hold-out set: calibration vs report half
+function isCalibrationMessage(key) {
+  return hashString(`${key}#calibration`) % 2 === 0;
+}
+
+// Area under the ROC curve: probability that a right prediction scores
+// higher than a wrong one (0.5 = useless, 1 = perfect). Ties count half.
+function computeAuc(items) {
+  const sorted = [...items].sort((a, b) => a.score - b.score);
+  let rankSumPositive = 0;
+  let positives = 0;
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    while (j < sorted.length && sorted[j].score === sorted[i].score) j++;
+    const averageRank = (i + 1 + j) / 2;   // ranks are 1-based
+    for (let k = i; k < j; k++) {
+      if (sorted[k].correct) {
+        rankSumPositive += averageRank;
+        positives++;
+      }
+    }
+    i = j;
+  }
+  const negatives = sorted.length - positives;
+  if (positives === 0 || negatives === 0) return null;
+  return (rankSumPositive - positives * (positives + 1) / 2) / (positives * negatives);
+}
+
+// Isotonic regression (pool adjacent violators): score -> P(correct),
+// non-decreasing. Returns knots { x: [...], y: [...] } (x = block start).
+function fitIsotonic(items) {
+  const sorted = [...items].sort((a, b) => a.score - b.score);
+  const blocks = [];
+  for (const item of sorted) {
+    blocks.push({ xMin: item.score, sum: item.correct ? 1 : 0, count: 1 });
+    // Merge while the previous block is not lower than the last one
+    while (blocks.length > 1) {
+      const last = blocks[blocks.length - 1];
+      const previous = blocks[blocks.length - 2];
+      if (previous.sum / previous.count < last.sum / last.count) break;
+      previous.sum += last.sum;
+      previous.count += last.count;
+      blocks.pop();
+    }
+  }
+  // Light smoothing (a block of 3/3 is not "100% sure"), kept monotone
+  const x = [];
+  const y = [];
+  let runningMax = 0;
+  for (const block of blocks) {
+    runningMax = Math.max(runningMax, (block.sum + 0.5) / (block.count + 1));
+    x.push(Number(block.xMin.toPrecision(6)));
+    y.push(Number(runningMax.toFixed(4)));
+  }
+  return { x, y };
+}
+
+// Fit the calibration on test results that carry margin/tokenCount/correct
+function fitConfidenceCalibration(results) {
+  if (results.length < CALIBRATION_MIN_SAMPLES) return null;
+
+  let best = null;
+  for (const [name, scoreFn] of Object.entries(CONFIDENCE_SCORES)) {
+    const items = results.map(r => ({ score: scoreFn(r), correct: r.predicted === r.actual }));
+    const auc = computeAuc(items);
+    if (auc !== null && (!best || auc > best.auc)) {
+      best = { name, auc, items };
+    }
+  }
+  if (!best) return null;   // all right or all wrong: nothing to calibrate
+
+  return {
+    score: best.name,
+    auc: Number(best.auc.toFixed(4)),
+    samples: results.length,
+    ...fitIsotonic(best.items)
+  };
+}
+
+// Calibrated confidence (0-100) of a prediction; falls back to the
+// classifier's own confidence when the model has no calibration
+function calibrateConfidence(calibration, prediction) {
+  if (!calibration || !CONFIDENCE_SCORES[calibration.score] || prediction.margin === undefined) {
+    return prediction.confidence;
+  }
+  const score = CONFIDENCE_SCORES[calibration.score](prediction);
+  // Last knot whose x <= score (binary search); below the first knot use it
+  let low = 0;
+  let high = calibration.x.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (calibration.x[middle] <= score) low = middle;
+    else high = middle - 1;
+  }
+  return Math.round(calibration.y[low] * 100);
+}
+
 // Compute the evaluation report from test predictions
-// testResults: [{ actual, predicted, confidence (0-100) }]
+// testResults: [{ actual, predicted, confidence (0-100), isCalibration }]
 // trainCounts: { folder: number of evaluation-training messages }
-function computeEvaluation(testResults, trainCounts) {
+// calibration: fitted calibration or null. With a calibration, the threshold
+// table is measured only on the report half (not used for fitting).
+function computeEvaluation(testResults, trainCounts, calibration = null) {
   const total = testResults.length;
   const correct = testResults.filter(r => r.predicted === r.actual).length;
 
@@ -1295,13 +1435,14 @@ function computeEvaluation(testResults, trainCounts) {
 
   // What matters to the user: "if I move everything >= threshold, how often
   // is it wrong?" -> coverage and precision above each threshold
+  const thresholdResults = calibration ? testResults.filter(r => !r.isCalibration) : testResults;
   const thresholds = EVAL_THRESHOLDS.map(threshold => {
-    const above = testResults.filter(r => r.confidence >= threshold);
+    const above = thresholdResults.filter(r => r.confidence >= threshold);
     const aboveCorrect = above.filter(r => r.predicted === r.actual).length;
     return {
       threshold,
       count: above.length,
-      coverage: total ? above.length / total : 0,
+      coverage: thresholdResults.length ? above.length / thresholdResults.length : 0,
       precision: above.length ? aboveCorrect / above.length : null
     };
   });
@@ -1324,7 +1465,11 @@ function computeEvaluation(testResults, trainCounts) {
     thresholds,
     perFolder,
     topConfusions,
-    minTestSupport: MIN_TEST_SUPPORT
+    minTestSupport: MIN_TEST_SUPPORT,
+    thresholdSampleSize: thresholdResults.length,
+    calibration: calibration
+      ? { score: calibration.score, auc: calibration.auc, samples: calibration.samples }
+      : null
   };
 }
 
@@ -1343,6 +1488,11 @@ function evaluationToMarkdown(meta, accountName = '') {
   lines.push(`- Trained: ${meta.trainedAt || '?'} · messages: ${meta.messagesUsed}`);
   lines.push(`- Hold-out: ${report.holdoutPercent}% → ${report.testSize} test messages, evaluation model trained on ${report.trainSize}`);
   lines.push(`- **Accuracy: ${pct(report.accuracy)}** · macro-F1: ${pct(report.macroF1)}`);
+  if (report.calibration) {
+    lines.push(`- Confidence: calibrated (${report.calibration.score}, AUC ${report.calibration.auc.toFixed(3)}) on ${report.calibration.samples} test messages; threshold table measured on the other ${report.thresholdSampleSize}`);
+  } else {
+    lines.push('- Confidence: not calibrated (classifier softmax)');
+  }
   lines.push('');
   lines.push('### Confidence threshold');
   lines.push('');
@@ -1475,7 +1625,11 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
               classifier.train(fullText, folderPath);
               if (evaluate) {
                 if (isHoldOutMessage(message, folderPath)) {
-                  testSet.push({ text: fullText, folder: folderPath });
+                  testSet.push({
+                    text: fullText,
+                    folder: folderPath,
+                    isCalibration: isCalibrationMessage(message.headerMessageId || `${folderPath}#${message.id}`)
+                  });
                 } else {
                   evalClassifier.train(fullText, folderPath);
                   evalTrainCounts[folderPath] = (evalTrainCounts[folderPath] || 0) + 1;
@@ -1524,7 +1678,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
     // Hold-out evaluation (read-only): predict the test set with the
     // evaluation classifier, which never saw those messages
     let evaluation = null;
-    if (evaluate && testSet.length > 0 && Object.keys(evalTrainCounts).length > 0) {
+    let calibration = null;
+    if (evaluate && testSet.length > 0&& Object.keys(evalTrainCounts).length > 0) {
       if (typeof evalClassifier.finalizeTraining === 'function') {
         browser.runtime.sendMessage({ type: 'evaluation-progress', current: 0, total: testSet.length });
         await yieldToEventLoop();
@@ -1533,13 +1688,28 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       const testResults = [];
       for (const [testIndex, testItem] of testSet.entries()) {
         const prediction = evalClassifier.predictWithConfidence(testItem.text);
-        testResults.push({ actual: testItem.folder, predicted: prediction.folder, confidence: prediction.confidence });
+        testResults.push({
+          actual: testItem.folder,
+          predicted: prediction.folder,
+          confidence: prediction.confidence,
+          margin: prediction.margin,
+          tokenCount: prediction.tokenCount,
+          isCalibration: testItem.isCalibration
+        });
         if (testIndex % 250 === 0 || testIndex === testSet.length - 1) {
           browser.runtime.sendMessage({ type: 'evaluation-progress', current: testIndex + 1, total: testSet.length });
           await yieldToEventLoop();
         }
       }
-      evaluation = computeEvaluation(testResults, evalTrainCounts);
+      // Fit the confidence calibration on the calibration half, then apply
+      // it to every test result (the report half measures it)
+      calibration = fitConfidenceCalibration(testResults.filter(r => r.isCalibration));
+      if (calibration) {
+        for (const result of testResults) {
+          result.confidence = calibrateConfidence(calibration, result);
+        }
+      }
+      evaluation = computeEvaluation(testResults, evalTrainCounts, calibration);
       console.log(`Evaluation: accuracy ${(evaluation.accuracy * 100).toFixed(1)}% on ${evaluation.testSize} held-out messages`);
     }
     
@@ -1549,7 +1719,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       features,
       trainedAt: new Date().toISOString(),
       messagesUsed: processedMessages,
-      evaluation
+      evaluation,
+      calibration
     });
     
     // Note: the folder selection is saved by the Training tab (all folders
@@ -1695,7 +1866,9 @@ async function classifyMessage(message, accountId, algorithmType = null) {
     }
     
     const prediction = classifier.predictWithConfidence(fullText);
-    
+    prediction.rawConfidence = prediction.confidence;
+    prediction.confidence = calibrateConfidence(classifier.meta?.calibration, prediction);
+
     console.log('Classification result:', {
       messageId: message.id,
       predictedFolder: prediction.folder,

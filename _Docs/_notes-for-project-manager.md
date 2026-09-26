@@ -16,6 +16,8 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 - 2026-09-26 — Rule export (R3-9) in 3.0 as Markdown/CSV only; Thunderbird filter snippet in 3.1.
 - 2026-09-26 — Sender-rule defaults: ≥3 messages, ≥90% purity.
 - No algorithm-family change in rel. 3: fix features, clean data, measure first.
+- 2026-09-26 — First reports: headers-only beats body (83.1% vs 77.6%); body stays default until folders are cleaned, then re-measure.
+- 2026-09-26 — Confidence is now calibrated on the hold-out set (the old one was ~100% for almost everything).
 
 ## Todo
 | Status | Owner | Task |
@@ -26,9 +28,12 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 | done | Claude | Fix: folder selection remembered per account (across trainings, restarts, updates) |
 | done | Claude | R3-4 Fix training/classification feature asymmetry (body default) |
 | done | Claude | R3-5 Hold-out evaluation report |
+| done | Claude | Calibrated confidence (threshold = real probability of being right) |
+| todo | PM (Andrea) | Retrain yahoo.it (body on), copy report: check the ≥80% row (target ≥95% precision, ≥60% coverage) |
+| todo | PM (Andrea) | Clean folders: duplicates (Commercialista, Medicina), year folders (Nota spese), tiny folders; then re-measure body vs no body |
 | todo | Claude | R3-6 Sender-priority rule |
 | todo | Claude | R3-7 Shift+click range selection |
 | todo | Claude | R3-8 "Select ≥ threshold" + group by target folder |
 | todo | Claude | R3-9 Sender→folder rule export (MD/CSV) |
-| todo | PM (Andrea) | Retrain yahoo.it twice (TF-IDF NB, body on / off), copy both evaluation reports as Markdown, note model size (console "Saved model … MB") |
+| done | PM (Andrea) | Retrain yahoo.it twice (body on / off), reports in `_Docs/reports/` |
 | todo | PM (Andrea) | Test each build in Thunderbird; confirm success criteria (≥95% precision above 80% threshold, ≥60% coverage) |
