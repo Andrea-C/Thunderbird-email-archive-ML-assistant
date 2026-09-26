@@ -3,7 +3,7 @@
 Thunderbird WebExtension (Manifest v2, min TB 91) that trains one ML model per mail account on the content of its archive folders and proposes a target folder for each Inbox message; the user reviews and moves the selected messages.
 
 ## Layout
-- `manifest.json` — name, `version` (numeric only, e.g. `3.0.0`) + `version_name` (e.g. `3.0.0-beta`), permissions.
+- `manifest.json` — name, `version` (numeric only, e.g. `3.0.0`; do not add `version_name` — Thunderbird warns "unexpected property"), permissions.
 - `background/background.js` — tokenizer, training (`trainModel`), classification (`classifyMessage`), model storage, messaging with the pages.
 - `pages/` — UI: `container.html` (tabs), `train.*` (Training tab), `archive.*` (Archive tab), `review.*` (Folder Review tab).
 - `utils/build_xpi.py` — builds `_builds/EmailArchive4Thunderbird_<timestamp>.xpi` (git-ignored).

@@ -183,7 +183,7 @@ Success criteria proposed for rel. 3 on `andrea.clementi@yahoo.it` (to be confir
 2. Include the body in training by default? **Yes** — body is the default, headers-only is opt-out (overrides the original proposal; §4.3 updated). The evaluation report will still show whether it pays off.
 3. R3-9 (rule export): **in 3.0 as Markdown/CSV export only**; `msgFilterRules.dat` snippet generation in 3.1.
 4. Sender-rule thresholds: **3 messages / 0.90 purity** kept as defaults; tune after the first report.
-5. Rename: **done in R3-1** — "Email Archive ML Assistant"; `manifest.json` `version: "3.0.0"` + `version_name: "3.0.0-beta"` (Mozilla requires a dot-separated numeric `version`).
+5. Rename: **done in R3-1** — "Email Archive ML Assistant"; `manifest.json` `version: "3.0.0"` (Mozilla requires a dot-separated numeric `version`; `version_name` was tried and removed because Thunderbird flags it as an unexpected property). Beta status tracked in CHANGELOG and git tags.
 
 ## 8b. Progress
 

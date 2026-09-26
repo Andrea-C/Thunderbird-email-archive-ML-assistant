@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Extension renamed** to "Email Archive ML Assistant"
-- **Version**: `manifest.json` now `version: 3.0.0` with `version_name: 3.0.0-beta` (Mozilla requires a purely numeric `version`)
+- **Version**: `manifest.json` now `version: 3.0.0` (Mozilla requires a purely numeric `version`; Thunderbird rejects `version_name`, so the beta status is tracked here and in git tags)
 
 ---
 

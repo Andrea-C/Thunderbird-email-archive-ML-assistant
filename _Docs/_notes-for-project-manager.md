@@ -10,7 +10,7 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 
 ## Decisions
 - 2026-09-26 — Rel. 2.0-beta frozen on `main`, tag `v2.0.0-beta`; rel. 3 work on branch `rel-3`.
-- 2026-09-26 — Name "Email Archive ML Assistant"; manifest `version 3.0.0` + `version_name 3.0.0-beta`.
+- 2026-09-26 — Name "Email Archive ML Assistant"; manifest `version 3.0.0` (beta status in CHANGELOG/tags; Thunderbird does not accept `version_name`).
 - 2026-09-26 — Validation account: `andrea.clementi@yahoo.it`.
 - 2026-09-26 — Message body included in training **by default** (headers-only is opt-out).
 - 2026-09-26 — Rule export (R3-9) in 3.0 as Markdown/CSV only; Thunderbird filter snippet in 3.1.
