@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.0-beta] - Unreleased
+
+### Changed
+
+- **Extension renamed** to "Email Archive ML Assistant"
+- **Version**: `manifest.json` now `version: 3.0.0` with `version_name: 3.0.0-beta` (Mozilla requires a purely numeric `version`)
+
+---
+
 ## [2.0.0-beta] - 2025-12-02
 
 ### Fixed

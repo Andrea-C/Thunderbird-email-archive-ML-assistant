@@ -1,7 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "Email Archive Assistant",
-  "version": "1.0",
+  "name": "Email Archive ML Assistant",
+  "version": "3.0.0",
+  "version_name": "3.0.0-beta",
   "description": "A machine learning-driven email archiving assistant for Thunderbird",
   "author": "Andrea Clementi with Cursor, Claude-Sonnet-3.5, o1",
   "browser_specific_settings": {
