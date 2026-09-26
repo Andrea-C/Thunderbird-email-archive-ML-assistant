@@ -921,13 +921,72 @@ async function getModelAlgorithm(accountId) {
   return available.length > 0 ? available[0] : null;
 }
 
-// Save folder structure for an account
+// ----------------------------------------------------------------------------
+// Folder selection persistence
+//
+// Stored under `folders_<accountId>` as
+//   { version: 2, selection: { "<folder path>": true | false }, savedAt }
+// Every folder shown in the Training tree is stored with its checkbox state,
+// so a folder the user unchecked stays unchecked across trainings, Thunderbird
+// restarts and extension updates. Only folders never seen before get the
+// default (checked unless it is a system folder).
+//
+// Legacy formats (rel. 1-2) are still read:
+//   - array of path strings, or array of {path, selected: true} only: the list
+//     of folders used in the last training -> folders not listed are unchecked
+//   - array of {path, selected} with some false: full structure
+// ----------------------------------------------------------------------------
+
+const FOLDER_SELECTION_VERSION = 2;
+
+// Parse any stored format into { selection, unlistedSelected }
+// unlistedSelected: state for folders not in `selection` (null = use default)
+function parseFolderSelection(raw) {
+  if (!raw) return null;
+  const stored = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  
+  if (stored && stored.version === FOLDER_SELECTION_VERSION && stored.selection) {
+    return { selection: { ...stored.selection }, unlistedSelected: null };
+  }
+  
+  if (Array.isArray(stored)) {
+    const selection = {};
+    let hasUnselected = false;
+    for (const item of stored) {
+      if (typeof item === 'string') {
+        selection[item] = true;
+      } else if (item && item.path) {
+        selection[item.path] = item.selected !== false;
+        if (item.selected === false) hasUnselected = true;
+      }
+    }
+    // A list of selected folders only means "everything else was unchecked"
+    return { selection, unlistedSelected: hasUnselected ? null : false };
+  }
+  
+  return null;
+}
+
+// Save the folder selection for an account.
+// folders: array of {path, selected} (preferred: all folders of the tree),
+// or array of path strings (all treated as selected)
 async function saveFolderStructure(accountId, folders) {
   try {
-    const key = `folders_${accountId}`;
-    const data = {};
-    data[key] = JSON.stringify(folders);
-    await browser.storage.local.set(data);
+    const selection = {};
+    for (const folder of folders || []) {
+      if (typeof folder === 'string') {
+        selection[folder] = true;
+      } else if (folder && folder.path) {
+        selection[folder.path] = folder.selected !== false;
+      }
+    }
+    await browser.storage.local.set({
+      [`folders_${accountId}`]: JSON.stringify({
+        version: FOLDER_SELECTION_VERSION,
+        selection,
+        savedAt: new Date().toISOString()
+      })
+    });
     return true;
   } catch (error) {
     console.error('Error saving folder structure:', error);
@@ -935,12 +994,12 @@ async function saveFolderStructure(accountId, folders) {
   }
 }
 
-// Load folder structure for an account
+// Load the folder selection for an account (null if never saved)
 async function loadFolderStructure(accountId) {
   try {
     const key = `folders_${accountId}`;
     const data = await browser.storage.local.get(key);
-    return data[key] ? JSON.parse(data[key]) : null;
+    return parseFolderSelection(data[key]);
   } catch (error) {
     console.error('Error loading folder structure:', error);
     return null;
@@ -950,36 +1009,19 @@ async function loadFolderStructure(accountId) {
 // Get folders with their state
 async function getFoldersWithState(account) {
   try {
-    // Get all folders using the correct API
     const folders = await getAllFolders(account);
+    const saved = await loadFolderStructure(account.id);
     
-    // Load saved structure
-    const savedStructure = await loadFolderStructure(account.id);
-    const savedFolderMap = new Map();
-    
-    if (savedStructure) {
-      savedStructure.forEach(folder => {
-        savedFolderMap.set(folder.path, folder.selected);
-      });
-    }
-    
-    // Process folders and set their states
     return folders.map(folder => {
-      const folderInfo = {
-        path: folder.path,
-        name: folder.name,
-        selected: false
-      };
-      
-      // If we have saved state, use it
-      if (savedFolderMap.has(folder.path)) {
-        folderInfo.selected = savedFolderMap.get(folder.path);
+      let selected;
+      if (saved && Object.prototype.hasOwnProperty.call(saved.selection, folder.path)) {
+        selected = saved.selection[folder.path];          // user's saved choice
+      } else if (saved && saved.unlistedSelected !== null) {
+        selected = saved.unlistedSelected;                // legacy selected-only list
       } else {
-        // For new folders, use default logic
-        folderInfo.selected = !folder.isDefault;
+        selected = !folder.isDefault;                     // folder never seen before
       }
-      
-      return folderInfo;
+      return { path: folder.path, name: folder.name, selected };
     });
   } catch (error) {
     console.error('Error getting folders with state:', error);
@@ -1291,8 +1333,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       messagesUsed: processedMessages
     });
     
-    // Save folder selection for future use
-    await saveFolderStructure(account.id, selectedFolders);
+    // Note: the folder selection is saved by the Training tab (all folders
+    // with their checkbox state); training must not overwrite it
     
     // Also save the account ID in a list of trained accounts
     const trainedAccounts = await browser.storage.local.get('trainedAccounts');
@@ -1506,9 +1548,12 @@ async function moveMessages(accountId, messages) {
 }
 
 // Get saved folder selection
+// Returns [{path, selected}] of the saved selection (null if never saved);
+// used by Archive/Review to list target folders (they keep selected ones)
 async function getSavedFolders(accountId) {
-  const data = await browser.storage.local.get(`folders_${accountId}`);
-  return data[`folders_${accountId}`] ? JSON.parse(data[`folders_${accountId}`]) : null;
+  const saved = await loadFolderStructure(accountId);
+  if (!saved) return null;
+  return Object.entries(saved.selection).map(([path, selected]) => ({ path, selected }));
 }
 
 // Helper function to check if folder is user-created

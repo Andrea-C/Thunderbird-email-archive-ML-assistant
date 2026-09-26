@@ -23,6 +23,7 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 | done | Claude | R3-1 Commit 2.0-beta, tag, branch `rel-3`, rename + version bump |
 | todo | Claude | R3-2 Training date filter (default 18 months) |
 | todo | Claude | R3-3 Persistent "exclude from training" per folder |
+| done | Claude | Fix: folder selection remembered per account (across trainings, restarts, updates) |
 | done | Claude | R3-4 Fix training/classification feature asymmetry (body default) |
 | todo | Claude | R3-5 Hold-out evaluation report |
 | todo | Claude | R3-6 Sender-priority rule |

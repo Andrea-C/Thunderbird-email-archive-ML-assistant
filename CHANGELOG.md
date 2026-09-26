@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Folder selection not remembered**: deselected ("deprecated") folders came back checked after every training. Training overwrote the saved selection with a list of paths in a different format, Start Training saved only the checked folders, and Select All / Deselect All saved a stale state. The selection is now stored per account as `{version: 2, selection: {path: true|false}}` with every folder of the tree, and is only written by the Training tab. Only folders never seen before get the default (checked, system folders unchecked). The previous format is still read: the folders used in the last training are restored as checked, all others unchecked.
 - **Training never saw the message body** (R3-4): `messages.list()` returns headers only, so every model was trained on sender + subject, while the Review tab classified with the body. Training and classification now build the text with the same shared code.
 
 ### Added

@@ -137,6 +137,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial models list load
   await updateModelsList();
   
+  // Read every folder checkbox of the tree (checked and unchecked)
+  function collectFolderSelection() {
+    return Array.from(folderTreeElement.querySelectorAll('input[type="checkbox"]'))
+      .map(checkbox => ({ path: checkbox.value, selected: checkbox.checked }));
+  }
+  
+  // Persist the current tree selection (unchecked folders included, so they
+  // stay unchecked next time)
+  async function saveFolderSelection(accountId) {
+    try {
+      const saved = await background.emailArchive.saveFolderStructure(accountId, collectFolderSelection());
+      if (!saved) throw new Error('storage error');
+    } catch (e) {
+      console.error('Error saving folder selection:', e);
+      status.textContent = 'Could not save the folder selection: ' + e.message;
+      status.className = 'error';
+    }
+  }
+  
   // Load folders for selected account
   async function loadFolders(account) {
     try {
@@ -196,28 +215,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         checkbox.checked = folder.selected;
         checkbox.id = `folder-${folder.path.replace(/[\/\s]/g, '_')}`;
         
-        // Add change listener to save state when checkbox changes
-        checkbox.addEventListener('change', async () => {
-          try {
-            // Update the folder's selected state in our data structure
-            const folderData = folderMap.get(folder.path);
-            if (folderData) {
-              folderData.selected = checkbox.checked;
-            }
-            
-            // Save the updated structure
-            const updatedStructure = Array.from(folderMap.values())
-              .map(f => ({
-                path: f.path,
-                name: f.name,
-                selected: f.selected
-              }));
-            
-            await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
-          } catch (e) {
-            console.error('Error saving folder state:', e);
-          }
-        });
+        // Save the whole tree's state whenever a checkbox changes
+        checkbox.addEventListener('change', () => saveFolderSelection(account.id));
         
         const label = document.createElement('label');
         label.htmlFor = checkbox.id;
@@ -290,12 +289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentFolderEl.textContent = '';
       
       // Get selected folders
-      const selectedFolders = Array.from(folderTreeElement.querySelectorAll('input[type="checkbox"]:checked'))
-        .map(checkbox => ({
-          path: checkbox.value,
-          name: checkbox.nextElementSibling ? checkbox.nextElementSibling.textContent : '',
-          selected: true
-        }));
+      const selectedFolders = collectFolderSelection().filter(f => f.selected);
       
       if (selectedFolders.length === 0) {
         status.textContent = 'Please select at least one folder.';
@@ -304,8 +298,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       
-      // Save current folder selection
-      await background.emailArchive.saveFolderStructure(currentAccount.id, selectedFolders);
+      // Save current folder selection (all folders with their state)
+      await saveFolderSelection(currentAccount.id);
       
       // Train the model with selected algorithm and options
       const includeBody = document.getElementById('includeBody').checked;
@@ -350,23 +344,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Add handlers for select/deselect all buttons
   document.getElementById('selectAllFolders').addEventListener('click', async () => {
-    const checkboxes = folderTreeElement.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(checkbox => checkbox.checked = true);
-    
-    // Trigger change event on one checkbox to save the state
-    if (checkboxes.length > 0) {
-      checkboxes[0].dispatchEvent(new Event('change'));
-    }
+    if (!currentAccount) return;
+    folderTreeElement.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.checked = true);
+    await saveFolderSelection(currentAccount.id);
   });
 
   document.getElementById('deselectAllFolders').addEventListener('click', async () => {
-    const checkboxes = folderTreeElement.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(checkbox => checkbox.checked = false);
-    
-    // Trigger change event on one checkbox to save the state
-    if (checkboxes.length > 0) {
-      checkboxes[0].dispatchEvent(new Event('change'));
-    }
+    if (!currentAccount) return;
+    folderTreeElement.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.checked = false);
+    await saveFolderSelection(currentAccount.id);
   });
   
   // Make algorithm options clickable on the entire row

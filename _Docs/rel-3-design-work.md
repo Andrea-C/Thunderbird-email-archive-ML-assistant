@@ -187,6 +187,7 @@ Success criteria proposed for rel. 3 on `andrea.clementi@yahoo.it` (to be confir
 
 ## 8b. Progress
 
+- **Folder selection persistence fixed (2026-09-26, requested by Andrea before continuing)**: see CHANGELOG. Relation to R3-3: a persistently unchecked folder already stays out of training; R3-3 still adds the explicit "excluded" state (greyed, not selectable via parent, removed from prediction targets).
 - **R3-4 done (2026-09-26)**: body in training by default (checkbox), shared text building in background, metadata key `modelMeta_<accountId>_<algo>`. Finding: the Archive tab was already classifying on headers only (it passes a MessageHeader without body) — only the Review tab added the body, so §2.1's asymmetry affected Review only. Retrain required: pre-3.0 models are treated as headers-only.
 - **R3-1 done (2026-09-26)**: rel. 2.0-beta committed on `main` and tagged `v2.0.0-beta`; branch `rel-3` created; manifest renamed/bumped; `_builds/` and `.claude/settings.local.json` git-ignored; project `CLAUDE.md` written.
 
