@@ -1,1 +1,8 @@
 _Docs/Traccia video demo Email assistant.md
+
+# Build output
+_builds/
+*.xpi
+
+# Local Claude Code settings
+.claude/settings.local.json

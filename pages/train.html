@@ -3,7 +3,6 @@
 <head>
     <meta charset="utf-8">
     <title>Email Archive Assistant - Training</title>
-    <link rel="stylesheet" type="text/css" href="train.css">
     <style>
     body {
       font-family: system-ui, -apple-system, sans-serif;
@@ -112,6 +111,88 @@
       font-style: italic;
       color: #666;
     }
+    
+    .algorithm-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #f9f9f9;
+    }
+    
+    .algorithm-section h4 {
+      margin: 0 0 12px 0;
+      font-size: 0.95em;
+      color: #333;
+    }
+    
+    .algorithm-option {
+      display: flex;
+      align-items: flex-start;
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .algorithm-option:hover {
+      background-color: #e8f4fc;
+    }
+    
+    .algorithm-option input[type="radio"] {
+      margin-right: 10px;
+      margin-top: 3px;
+    }
+    
+    .algorithm-option label {
+      cursor: pointer;
+      flex: 1;
+    }
+    
+    .algorithm-name {
+      font-weight: 600;
+      color: #333;
+      display: block;
+    }
+    
+    .algorithm-desc {
+      font-size: 0.85em;
+      color: #666;
+      margin-top: 2px;
+      display: block;
+    }
+    
+    .algorithm-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.75em;
+      font-weight: 600;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    
+    .badge-best {
+      background: #cce5ff;
+      color: #004085;
+    }
+    
+    .badge-recommended {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .badge-basic {
+      background: #e2e3e5;
+      color: #383d41;
+    }
+    
+    .model-algorithm {
+      font-size: 0.8em;
+      color: #666;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +208,44 @@
     
     <button id="selectAllFolders">Select All</button>
     <button id="deselectAllFolders">Deselect All</button>
+    
+    <div class="algorithm-section">
+      <h4>Classification Algorithm</h4>
+      
+      <div class="algorithm-option">
+        <input type="radio" name="algorithm" id="algo-svm" value="svm">
+        <label for="algo-svm">
+          <span class="algorithm-name">
+            SVM
+            <span class="algorithm-badge badge-best">Best Accuracy</span>
+          </span>
+          <span class="algorithm-desc">Support Vector Machine - highest accuracy, slower training</span>
+        </label>
+      </div>
+      
+      <div class="algorithm-option">
+        <input type="radio" name="algorithm" id="algo-tfidf" value="tfidf_naive_bayes" checked>
+        <label for="algo-tfidf">
+          <span class="algorithm-name">
+            TF-IDF Naive Bayes
+            <span class="algorithm-badge badge-recommended">Recommended</span>
+          </span>
+          <span class="algorithm-desc">Good accuracy with word importance weighting</span>
+        </label>
+      </div>
+      
+      <div class="algorithm-option">
+        <input type="radio" name="algorithm" id="algo-naive" value="naive_bayes">
+        <label for="algo-naive">
+          <span class="algorithm-name">
+            Naive Bayes
+            <span class="algorithm-badge badge-basic">Basic</span>
+          </span>
+          <span class="algorithm-desc">Fast and simple, original algorithm</span>
+        </label>
+      </div>
+    </div>
+    
     <button id="trainButton">Start Training</button>
   </div>
   

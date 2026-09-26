@@ -1,71 +1,143 @@
 let currentAccount = null;
-let folderTree = {};
+
+// Get algorithm display name
+function getAlgorithmDisplayName(algorithmType) {
+  switch (algorithmType) {
+    case 'svm':
+      return 'SVM';
+    case 'tfidf_naive_bayes':
+      return 'TF-IDF Naive Bayes';
+    case 'naive_bayes':
+      return 'Naive Bayes';
+    default:
+      return algorithmType || 'Unknown';
+  }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Get DOM elements
   const accountSelect = document.getElementById('accountSelect');
-  const folderTree = document.getElementById('folderTree');
-  const selectAllBtn = document.getElementById('selectAllFolders');
-  const deselectAllBtn = document.getElementById('deselectAllFolders');
+  const folderTreeElement = document.getElementById('folderTree');
   const trainButton = document.getElementById('trainButton');
   const modelsList = document.getElementById('modelsList');
   const status = document.getElementById('status');
   const folderCount = document.getElementById('folderCount');
   const messageCount = document.getElementById('messageCount');
-  const currentFolder = document.getElementById('currentFolder');
+  const currentFolderEl = document.getElementById('currentFolder');
   
-  // Load accounts with subfolders
-  const accounts = await browser.accounts.list(true);
-  for (const account of accounts) {
-    const option = document.createElement('option');
-    option.value = account.id;
-    option.textContent = account.name;
-    accountSelect.appendChild(option);
+  let accounts = [];
+  let background = null;
+  
+  // Initialize - get background page
+  try {
+    background = await browser.runtime.getBackgroundPage();
+    if (!background || !background.emailArchive) {
+      throw new Error('Background page not available');
+    }
+  } catch (error) {
+    console.error('Failed to get background page:', error);
+    status.textContent = 'Error: Could not connect to background page. ' + error.message;
+    status.className = 'error';
+    return;
+  }
+  
+  // Load accounts
+  try {
+    accounts = await browser.accounts.list(true);
+    for (const account of accounts) {
+      const option = document.createElement('option');
+      option.value = account.id;
+      option.textContent = account.name;
+      accountSelect.appendChild(option);
+    }
+  } catch (error) {
+    console.error('Failed to load accounts:', error);
+    status.textContent = 'Error loading accounts: ' + error.message;
+    status.className = 'error';
   }
   
   // Load trained models list
   async function updateModelsList() {
-    const background = await browser.runtime.getBackgroundPage();
-    const trainedAccountIds = await background.emailArchive.getTrainedAccounts();
-    
-    modelsList.innerHTML = '';
-    
-    if (trainedAccountIds.length === 0) {
-      modelsList.innerHTML = '<div class="model-item">No trained models yet</div>';
-      return;
-    }
-    
-    for (const accountId of trainedAccountIds) {
-      const account = accounts.find(a => a.id === accountId);
-      if (account) {
-        const div = document.createElement('div');
-        div.className = 'model-item';
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = account.name;
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.onclick = async () => {
-          await background.emailArchive.deleteModel(accountId);
-          updateModelsList();
-        };
-        
-        div.appendChild(nameSpan);
-        div.appendChild(deleteBtn);
-        modelsList.appendChild(div);
+    try {
+      // Get all accounts with their trained algorithms
+      const accountModels = await background.emailArchive.getTrainedAccountsWithAlgorithms();
+      
+      modelsList.innerHTML = '';
+      
+      const accountIds = Object.keys(accountModels);
+      if (accountIds.length === 0) {
+        modelsList.innerHTML = '<div class="model-item">No trained models yet</div>';
+        return;
       }
+      
+      for (const accountId of accountIds) {
+        const account = accounts.find(a => a.id === accountId);
+        if (!account) continue;
+        
+        const algorithms = accountModels[accountId];
+        
+        // Create one entry per algorithm for this account
+        for (const algorithmType of algorithms) {
+          const div = document.createElement('div');
+          div.className = 'model-item';
+          
+          const infoDiv = document.createElement('div');
+          infoDiv.style.flex = '1';
+          
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = account.name;
+          nameSpan.style.display = 'block';
+          
+          const algorithmSpan = document.createElement('span');
+          algorithmSpan.className = 'model-algorithm';
+          algorithmSpan.textContent = getAlgorithmDisplayName(algorithmType);
+          
+          infoDiv.appendChild(nameSpan);
+          infoDiv.appendChild(algorithmSpan);
+          
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.onclick = async () => {
+            if (confirm(`Delete ${getAlgorithmDisplayName(algorithmType)} model for ${account.name}?`)) {
+              try {
+                await background.emailArchive.deleteModel(accountId, algorithmType);
+                updateModelsList();
+              } catch (e) {
+                console.error('Error deleting model:', e);
+                status.textContent = 'Error deleting model: ' + e.message;
+                status.className = 'error';
+              }
+            }
+          };
+          
+          div.appendChild(infoDiv);
+          div.appendChild(deleteBtn);
+          modelsList.appendChild(div);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating models list:', error);
+      console.error('Error stack:', error.stack);
+      modelsList.innerHTML = `<div class="model-item">Error loading models: ${error.message}</div>`;
     }
   }
   
+  // Initial models list load
   await updateModelsList();
   
   // Load folders for selected account
   async function loadFolders(account) {
     try {
-      const background = await browser.runtime.getBackgroundPage();
+      // Show loading state
+      folderTreeElement.innerHTML = '<div style="padding: 10px; color: #666;">Loading folders...</div>';
       
-      // Get current folders with their states (includes saved state handling)
+      // Get current folders with their states
       const folders = await background.emailArchive.getFoldersWithState(account);
+      
+      if (!folders || folders.length === 0) {
+        folderTreeElement.innerHTML = '<div style="padding: 10px; color: #666;">No folders found</div>';
+        return;
+      }
       
       // Build folder hierarchy
       const folderMap = new Map();
@@ -98,38 +170,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       
       // Clear existing folders
-      folderTree.innerHTML = '';
+      folderTreeElement.innerHTML = '';
       
       // Recursive function to render folder hierarchy
       function renderFolder(folder, level = 0) {
         const div = document.createElement('div');
         div.className = 'folder-item';
-        div.style.paddingLeft = `${level * 20}px`; // Indent based on level
+        div.style.paddingLeft = `${level * 20}px`;
         
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.value = folder.path;
         checkbox.checked = folder.selected;
-        checkbox.id = `folder-${folder.path}`;
+        checkbox.id = `folder-${folder.path.replace(/[\/\s]/g, '_')}`;
         
         // Add change listener to save state when checkbox changes
         checkbox.addEventListener('change', async () => {
-          // Update the folder's selected state in our data structure
-          const folderData = folderMap.get(folder.path);
-          if (folderData) {
-            folderData.selected = checkbox.checked;
+          try {
+            // Update the folder's selected state in our data structure
+            const folderData = folderMap.get(folder.path);
+            if (folderData) {
+              folderData.selected = checkbox.checked;
+            }
+            
+            // Save the updated structure
+            const updatedStructure = Array.from(folderMap.values())
+              .map(f => ({
+                path: f.path,
+                name: f.name,
+                selected: f.selected
+              }));
+            
+            await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
+          } catch (e) {
+            console.error('Error saving folder state:', e);
           }
-          
-          // Save the updated structure
-          const updatedStructure = Array.from(folderMap.values())
-            .filter(f => !f.children || f.children.length === 0) // Only save leaf folders
-            .map(f => ({
-              path: f.path,
-              name: f.name,
-              selected: f.selected
-            }));
-          
-          await background.emailArchive.saveFolderStructure(account.id, updatedStructure);
         });
         
         const label = document.createElement('label');
@@ -138,7 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         div.appendChild(checkbox);
         div.appendChild(label);
-        folderTree.appendChild(div);
+        folderTreeElement.appendChild(div);
         
         // Recursively render children
         if (folder.children) {
@@ -149,8 +224,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Render the folder tree
       rootFolders.forEach(folder => renderFolder(folder));
       
+      // Show count
+      status.textContent = `Found ${folders.length} folders`;
+      status.className = 'success';
+      
     } catch (error) {
       console.error('Error loading folders:', error);
+      folderTreeElement.innerHTML = '<div style="padding: 10px; color: #c00;">Error loading folders</div>';
       status.textContent = 'Error loading folders: ' + error.message;
       status.className = 'error';
     }
@@ -162,40 +242,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectedAccount) {
       currentAccount = selectedAccount;
       await loadFolders(selectedAccount);
+    } else {
+      currentAccount = null;
+      folderTreeElement.innerHTML = '';
     }
   });
   
+  // Get selected algorithm
+  function getSelectedAlgorithm() {
+    const selected = document.querySelector('input[name="algorithm"]:checked');
+    return selected ? selected.value : 'tfidf_naive_bayes';
+  }
+  
   // Handle train button click
   trainButton.addEventListener('click', async () => {
+    if (!currentAccount) {
+      status.textContent = 'Please select an account first.';
+      status.className = 'error';
+      return;
+    }
+    
     try {
       trainButton.disabled = true;
-      status.textContent = 'Training in progress...';
+      
+      // Get selected algorithm
+      const algorithmType = getSelectedAlgorithm();
+      const algorithmName = getAlgorithmDisplayName(algorithmType);
+      
+      status.textContent = `Training with ${algorithmName}...`;
       status.className = '';
       
+      // Reset progress display
+      folderCount.textContent = '-';
+      messageCount.textContent = '-';
+      currentFolderEl.textContent = '';
+      
       // Get selected folders
-      const selectedFolders = Array.from(folderTree.querySelectorAll('input[type="checkbox"]:checked'))
+      const selectedFolders = Array.from(folderTreeElement.querySelectorAll('input[type="checkbox"]:checked'))
         .map(checkbox => ({
           path: checkbox.value,
-          name: checkbox.nextElementSibling.textContent,
+          name: checkbox.nextElementSibling ? checkbox.nextElementSibling.textContent : '',
           selected: true
         }));
       
       if (selectedFolders.length === 0) {
         status.textContent = 'Please select at least one folder.';
         status.className = 'error';
+        trainButton.disabled = false;
         return;
       }
       
       // Save current folder selection
-      const background = await browser.runtime.getBackgroundPage();
       await background.emailArchive.saveFolderStructure(currentAccount.id, selectedFolders);
       
-      // Train the model
-      const result = await background.emailArchive.trainModel(currentAccount, selectedFolders.map(f => f.path));
+      // Train the model with selected algorithm
+      const result = await background.emailArchive.trainModel(
+        currentAccount, 
+        selectedFolders.map(f => f.path),
+        algorithmType
+      );
       
       if (result.success) {
-        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages.`;
+        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName}.`;
         status.className = 'success';
+        
+        // Update the models list
+        await updateModelsList();
       }
     } catch (error) {
       console.error('Training error:', error);
@@ -212,19 +324,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       const { folderProgress, messageProgress } = message;
       folderCount.textContent = `${folderProgress.current} / ${folderProgress.total}`;
       messageCount.textContent = `${messageProgress.current} / ${messageProgress.total}`;
-      currentFolder.textContent = `Current folder: ${folderProgress.currentFolder}`;
+      currentFolderEl.textContent = `Current folder: ${folderProgress.currentFolder}`;
     } else if (message.type === 'folder-sync-start') {
-      currentFolder.textContent = `Syncing folder: ${message.folder}...`;
-      currentFolder.className = 'sync-status warning';
+      currentFolderEl.textContent = `Syncing folder: ${message.folder}...`;
+      currentFolderEl.className = 'sync-status warning';
     } else if (message.type === 'folder-sync-complete') {
-      currentFolder.textContent = `Sync complete: ${message.folder}`;
-      currentFolder.className = 'sync-status success';
+      currentFolderEl.textContent = `Sync complete: ${message.folder}`;
+      currentFolderEl.className = 'sync-status success';
     }
   });
 
   // Add handlers for select/deselect all buttons
   document.getElementById('selectAllFolders').addEventListener('click', async () => {
-    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    const checkboxes = folderTreeElement.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(checkbox => checkbox.checked = true);
     
     // Trigger change event on one checkbox to save the state
@@ -234,7 +346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('deselectAllFolders').addEventListener('click', async () => {
-    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    const checkboxes = folderTreeElement.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(checkbox => checkbox.checked = false);
     
     // Trigger change event on one checkbox to save the state
@@ -242,4 +354,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       checkboxes[0].dispatchEvent(new Event('change'));
     }
   });
-}); 
+  
+  // Make algorithm options clickable on the entire row
+  document.querySelectorAll('.algorithm-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        const radio = option.querySelector('input[type="radio"]');
+        if (radio) {
+          radio.checked = true;
+        }
+      }
+    });
+  });
+  
+  console.log('Training page initialized successfully');
+});

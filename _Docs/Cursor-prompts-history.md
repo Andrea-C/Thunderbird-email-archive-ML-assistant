@@ -430,15 +430,162 @@ When you are ready, I'll tell you what to do to improve the project
 
 # Release 2 - Fix issues release 1
 
-Fix the following issues in
+Fix the following issues:
+1. Duplicate Event Listener Bug in archive.js:
+- There are two DOMContentLoaded event listeners (lines 92 and 535), which could cause duplicate handlers and unexpected behavior
+
+2. Missing CSS file reference in train.html:
+- Line 7 references train.css but this file doesn't exist in the pages/ folder
+
+3. loadAccounts function scope issue in archive.js:
+- The function is defined inside the first DOMContentLoaded callback but referenced in visibilitychange listener outside it (line 483)
+
+4. Folder selection save logic in train.js:
+- Only saves leaf folders (line 125-126: filter(f => !f.children || f.children.length === 0)), which may lose parent folder states
+
+5. Confidence threshold doesn't dynamically update:
+- When the slider changes after classification, the red/normal styling on Target Folder column doesn't update until re-classification
+
+6. In Archive page, if the user click a column header to sort the table by that column value, the item selection is reset
+- We need to mantain the selected email between table sorts
+
+7. We need to move the colums Confidence and Target folder at the beginning o the table as second and third columnd, after the checkbox column
+
+------------------------------------------------------------------------------
+
+# CHANGELOG.md and readme.md
+
+## Create a CHANGELOG.md file in the root folder of the project
+write a section for the release 1.0.0 with the feature developed at that release
+Write a section for the release 2.0.0 Beta (the one we are currently working on) with the fix just done
+
+## Udate the readme.md file
+- update the file if it's relevant to add information about the last fixes
+- add a section to describe how to deploy / install / update the extension to Thunderbird
+
+
 
 
 ------------------------------------------------------------------------------
 
-#
+# date column 
+- Move Date as last column
+- in the archive page, by default the email table should be ordered by Date descendind (most recent e-mail on top). We can then order it by other columuns
 
 
-------------------------------------------------------------------------------
+---
 
-#
+# release 2 brainstorm
 
+Now let's go in the main upgrade for the release 2
+This is only a brainstorm and we need to recap out thougths in the document _Docs/rel-2-design-work.md
+
+First of all I renamed the file _Docs/DevelopmentPlan.md in _Docs/rel-1-DevelopmentPlan.md
+
+## release 2 summary
+1. Organize folders content
+2. Improve classifying model
+3. Change Target folder
+
+## 1. Organize folders content
+The classification model is trained on the content of the mailbox folder.
+But the content of these folders can contain "errors" because in the past the operation of moving an e-mail from the inbox to a folder was done manually by the user that had to decide where to store each e-mail.
+Because the user didn't always remember the criteria used in the past for other e-mails, it happens that similar e-mail have been stored in different folders and when we train a classification model this ambiguity is reflected in the model that is less accurate.
+
+So we need a way to give to the user the opportunity to review previous archive choices and reorganize also the e-mail contained in the folders.
+How can we do that?
+
+
+## 2. Improve the classification model
+
+In the task "1. Organize folders content" we said that some e-mail have been archived in the past in the wrong folder.
+But sometime, the folder that seams wrong is actually right. 
+This happens when the distinction between two e-mails is very thin
+For this reason I would like to understand if we can create a better classification model.
+Is the Naive Bayes algorithm the best option to be used for this project.
+Can we find a better ways to create the classification model, also combining more algorithm together or a multistep classification?
+
+## 3. Change Target folder
+
+In the archive page, after we run the classification step, I would like to be able to change the predicted Target Folder and manually force a folder selected by the user
+The new folder should be selected by the user from a drop down list with autofilter based on the letter typed by the user
+I.e. the user click the Target Folder field, the dropdown list with all the folder appears. The user start typing some letters or numbers and the list is filtered with the folders containing these letter/numbers
+
+Then, the [Move selected] button, move the e-mail in the new choosen folder
+
+
+---
+
+# release 2 brainstorm step 2
+
+## Open Questions
+
+1. **Folder Review Mode:** Should this be a separate tab or integrated into Training tab?
+Answer: separate tab
+
+2. **Model versioning:** When we improve the model, should we keep old models or auto-migrate?
+Answer: we discard the old model and we will train a new one
+
+3. **Performance:** For large mailboxes (10k+ emails), how do we handle analysis performance?
+Answer: currently, with the Naive Bayes algorithm also mailbox with 10K+ emails get analyzed enough quickly (few minutes), so at the moment we do not address the performance issue.
+
+4. **Undo:** Should we add undo functionality for moved emails?
+Answer: No undo move now. We will think later
+
+---
+
+About the classification model, you gave me 4 options:
+- Option A: TF-IDF Weighted Naive Bayes
+- Option B: Support Vector Machine (SVM)
+- Option C: Multi-Step Hierarchical Classification
+- Option D: Ensemble Methods (Voting)
+- Option E: Neural Network with TensorFlow.js
+
+How much could be better Option B vs Option A?
+
+With your ideas you spoiled me: can we think to implement more then one classification method and let the user select it and may be compare the results?
+
+---
+
+Update the rel-2-design-work-accordingly
+
+# release 2 brainstorm step 3
+
+We will follow the following plan
+
+Release 2.0 Scope
+Minimum Viable:
+Change Target Folder
+TF-IDF Naive Bayes
+Algorithm selection
+Full Release:
+All above + SVM + Folder Review Mode
+
+
+# Body preview
+
+Let's improve the Archive page
+I want to add an "eye" icon  in each record of the page
+The Icon can be in a new colum or as part of the content of the subject column, before the subject value
+when the user mouse over the eye icon, a tooltip with the raw text of the email is shown in a popup
+Before coding this feature, tell me if it's easily faisable, pros and cons
+
+## Body preview followup
+
+I prefer option A
+Before proceeding let's discuss 3 items from the code complexity point of view because I prefer to keep the code simple:
+- For HTML email it's easier to show the rendered HTML or strip the HTML to render as text?
+- Would be easier we don't put the "loading ..." while fetching?
+- The "preview" will be very occasional, if coding the caching feature complex? Otherwise I think we can skip the caching feature and collect the email every time. 
+What do you think?
+
+## Body preview followup 2
+OK Proceed with Option A - Lazy Load
+Show eye icon (👁) in subject column
+On hover, fetch email body via API
+Cache result in memory
+Show tooltip with truncated text
+
+✅ Strip HTML to plain text
+✅ No "Loading..." indicator
+✅ Simple caching (4 lines)

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Review Folders</title>
+  <link rel="stylesheet" href="archive.css">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #333;
+    }
+
+    .selectors-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .selector-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .selector-group label {
+      font-size: 0.85em;
+      color: #666;
+      font-weight: 500;
+    }
+
+    .selector-group select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 1em;
+      min-width: 200px;
+    }
+
+    .filter-section {
+      background: #f9f9f9;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-group label {
+      font-weight: 500;
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 16px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .threshold-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .threshold-control input[type="range"] {
+      width: 150px;
+    }
+
+    .actions-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .actions-bar button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1em;
+    }
+
+    #analyzeButton {
+      background: #0060df;
+      color: white;
+    }
+
+    #analyzeButton:hover {
+      background: #003eaa;
+    }
+
+    #analyzeButton:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    #moveToSuggestedButton {
+      background: #28a745;
+      color: white;
+    }
+
+    #moveToSuggestedButton:hover {
+      background: #218838;
+    }
+
+    #moveToSuggestedButton:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    #moveToOtherButton {
+      background: #17a2b8;
+      color: white;
+    }
+
+    #moveToOtherButton:hover {
+      background: #138496;
+    }
+
+    #moveToOtherButton:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    #keepInFolderButton {
+      background: #6c757d;
+      color: white;
+    }
+
+    #keepInFolderButton:hover {
+      background: #5a6268;
+    }
+
+    #status {
+      padding: 10px;
+      margin-bottom: 16px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    #status.show {
+      display: block;
+    }
+
+    #status.success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    #status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    #status.info {
+      background: #e7f3ff;
+      color: #004085;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex;
+      gap: 24px;
+      padding: 12px 16px;
+      background: #f0f7ff;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-label {
+      font-size: 0.8em;
+      color: #666;
+    }
+
+    .stat-value {
+      font-size: 1.2em;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .stat-value.highlight {
+      color: #d32f2f;
+    }
+
+    /* Table overrides */
+    .results-table {
+      margin-top: 16px;
+    }
+
+    /* Misplacement indicator */
+    .misplaced {
+      background-color: #fff3cd !important;
+    }
+
+    .suggested-folder {
+      color: #0066cc;
+      font-weight: 500;
+    }
+
+    .match-folder {
+      color: #28a745;
+    }
+
+    /* Checkbox styling */
+    tr.selected {
+      background-color: #e6f3ff;
+    }
+
+    /* Move to dropdown */
+    .move-dropdown-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .move-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+      min-width: 250px;
+      display: none;
+    }
+
+    .move-dropdown.show {
+      display: block;
+    }
+
+    .move-dropdown-search {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .move-dropdown-search input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+
+    .move-dropdown-item {
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    .move-dropdown-item:hover {
+      background: #f0f7ff;
+    }
+  </style>
+</head>
+<body>
+  <h2>Review Folders</h2>
+  <p>Analyze a folder to find potentially misplaced emails based on ML predictions.</p>
+
+  <div class="selectors-row">
+    <div class="selector-group">
+      <label>Account</label>
+      <select id="accountSelect">
+        <option value="">Select Account</option>
+      </select>
+    </div>
+    <div class="selector-group">
+      <label>Algorithm</label>
+      <select id="algorithmSelect" disabled>
+        <option value="">Select Algorithm</option>
+      </select>
+    </div>
+    <div class="selector-group">
+      <label>Folder to Review</label>
+      <select id="folderSelect" disabled>
+        <option value="">Select Folder</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="filter-section">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Show:</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="showFilter" value="misplaced" checked>
+            Potential misplacements only
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="showFilter" value="all">
+            All emails
+          </label>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Confidence threshold:</label>
+        <div class="threshold-control">
+          <input type="range" id="thresholdSlider" min="0" max="100" value="70" step="5">
+          <span id="thresholdValue">70%</span>
+        </div>
+        <small>(show if confidence &lt; this value)</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions-bar">
+    <button id="analyzeButton" disabled>Analyze Folder</button>
+    <button id="moveToSuggestedButton" disabled>Move to Suggested</button>
+    <div class="move-dropdown-container">
+      <button id="moveToOtherButton" disabled>Move to... ▼</button>
+      <div id="moveDropdown" class="move-dropdown">
+        <div class="move-dropdown-search">
+          <input type="text" id="moveSearchInput" placeholder="Search folders...">
+        </div>
+        <div id="moveDropdownList"></div>
+      </div>
+    </div>
+    <button id="keepInFolderButton" disabled>Keep in Current Folder (deselect)</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="stats-bar" id="statsBar" style="display: none;">
+    <div class="stat-item">
+      <span class="stat-label">Total Emails</span>
+      <span class="stat-value" id="statTotal">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Potential Misplacements</span>
+      <span class="stat-value highlight" id="statMisplaced">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Correctly Placed</span>
+      <span class="stat-value" id="statCorrect">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Selected</span>
+      <span class="stat-value" id="statSelected">0</span>
+    </div>
+  </div>
+
+  <div class="results-table">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-checkbox"><input type="checkbox" id="selectAll"></th>
+          <th class="col-confidence" data-sort="confidence">Confidence</th>
+          <th class="col-target" data-sort="suggested">Suggested Folder</th>
+          <th class="col-from" data-sort="from">From</th>
+          <th class="col-subject" data-sort="subject">Subject</th>
+          <th class="col-date" data-sort="date">Date</th>
+        </tr>
+      </thead>
+      <tbody id="emailList">
+      </tbody>
+    </table>
+  </div>
+
+  <script src="review.js"></script>
+</body>
+</html>
+

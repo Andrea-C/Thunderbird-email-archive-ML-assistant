@@ -7,40 +7,123 @@ The application was developed as an exercise to verify the feasibility of creati
 - The code must be written entirely by Artificial Intelligence.
 - The code must use functions and APIs that are not part of the training data of the AI models used.
 
-## Requirements:
-- The application must be fully integrated into Mozilla Thunderbird.
-- Internal data storage must be managed using Thunderbird's storage APIs.
-- For all phases, the application must synchronize IMAP with the mail server.
+## Requirements
+- Mozilla Thunderbird version 91.0 or higher
+- Email accounts configured with IMAP protocol
+- Existing folder structure with archived emails for training
+
+## Installation
+
+### First Installation
+
+1. **Download the Extension**
+   - Clone or download this repository to your local machine
+   
+2. **Package the Extension** (if not already packaged)
+   
+   **Option A: Use the build script (recommended)**
+   ```bash
+   python utils/build_xpi.py
+   ```
+   This creates an `.xpi` file in the `_builds` folder with timestamp naming.
+   
+   **Option B: Manual packaging**
+   - Navigate to the project root folder
+   - Select all files and folders (excluding `_Docs`, `.cursor`, `.git`, `utils`, and other development files)
+   - Create a ZIP file containing: `manifest.json`, `background/`, `pages/`, `icons/`
+   - Rename the ZIP file extension from `.zip` to `.xpi`
+
+3. **Install in Thunderbird**
+   - Open Thunderbird
+   - Go to **Tools** → **Add-ons and Themes** (or press `Ctrl+Shift+A`)
+   - Click the gear icon (⚙️) in the top-right corner
+   - Select **Install Add-on From File...**
+   - Navigate to and select the `.xpi` file
+   - Click **Add** when prompted to confirm installation
+   - The extension is now installed and ready to use
+
+### Alternative: Install for Development
+
+1. Open Thunderbird
+2. Go to **Tools** → **Developer Tools** → **Debug Add-ons**
+3. Click **Load Temporary Add-on...**
+4. Navigate to the project folder and select `manifest.json`
+5. The extension will be loaded temporarily (removed when Thunderbird restarts)
+
+### Updating the Extension
+
+1. Go to **Tools** → **Add-ons and Themes**
+2. Find "Email Archive ML Assistant" in the list
+3. Click the three-dot menu (⋮) next to the extension
+4. Select **Remove** to uninstall the old version
+5. Follow the installation steps above with the new `.xpi` file
+
+> **Note:** Your trained models and folder selections are stored in Thunderbird's local storage and will persist across updates, unless you explicitly delete them.
+
+### Uninstalling
+
+1. Go to **Tools** → **Add-ons and Themes**
+2. Find "Email Archive ML Assistant" in the list
+3. Click the three-dot menu (⋮) next to the extension
+4. Select **Remove**
+
+## Usage
 
 The application is divided into two parts:
 - **Training:** where the Machine Learning model is created.
 - **Archive:** where the model is used to suggest the archive folder and archive the message.
 
-## Training
-- The application retrieves the email accounts present in the Thunderbird client.
-- For each account, it retrieves all archive folders, distinguishing between system folders (Inbox, Sent, Drafts, Trash, Junk, etc.) and personal archive folders.
-- The user selects the mailbox to be trained.
-- The application presents a list of folders to be used for the Machine Learning model, automatically selecting all personal folders and excluding system folders.
-- The user can modify the initial selection.
-- The folder selection is stored in internal storage.
-- A Machine Learning model is created for each selected mailbox.
-- It is possible to delete and recreate the Machine Learning model.
+### Accessing the Extension
 
-## Archive
-- The application allows selecting the mailbox to be used for archiving, choosing among the mailboxes for which a Machine Learning model has been created.
-- The user selects a probability threshold, above which a message will be suggested for archiving.
-- All messages present in the selected mailbox's Inbox are displayed.
-- The user can select all or some messages to be classified.
-- The selected messages are classified with an assigned archive folder and an indication of classification confidence.
-- The user can select messages to be archived.
-- The selected messages are moved from the Inbox to the archive folder determined by the Machine Learning model.
+1. Open Thunderbird
+2. Go to **Tools** menu
+3. Click **Email Archive ML Assistant**
+
+### Training
+
+1. Select the **Training** tab
+2. Choose an email account from the dropdown
+3. Review the folder tree - user folders are selected by default, system folders are excluded
+4. Modify the selection as needed using checkboxes or "Select All"/"Deselect All" buttons
+5. Click **Start Training**
+6. Wait for the training to complete - progress is displayed showing folders and messages processed
+7. The trained model appears in the "Trained Models" list
+
+### Archive (Classification)
+
+1. Select the **Archive** tab
+2. Choose an account (only accounts with trained models are shown)
+3. Inbox messages are loaded automatically
+4. Adjust the **Confidence Threshold** slider as needed (default: 50%)
+5. Select messages to classify using checkboxes
+6. Click **Classify Selected**
+7. Review predictions:
+   - Confidence scores are color-coded (green ≥80%, orange ≥50%, red <50%)
+   - Low-confidence predictions are shown in red in the Target Folder column
+8. Select messages to move
+9. Click **Move Selected**
+10. Messages with confidence above the threshold are moved to their predicted folders
+
+## Technical Details
+
+- **ML Algorithm:** Naive Bayes classifier with Laplace smoothing
+- **Features:** Tokenized words, email addresses, sender domains
+- **Storage:** Models stored using `browser.storage.local` API
+- **Compatibility:** Thunderbird 91.0+ (WebExtension Manifest V2)
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes in each version.
+
+---
 
 ## Development with AI
-The development was primarily conducted using Cursor rel. 0.45 and partially with Codeium Windsurf rel. 1.2.2, both using Anthropic Claude 3.5 Sonnet as LLM.
-To create the development plan, the initial specifications where improved using ChapGPT o1.
 
+The development was primarily conducted using Cursor rel. 0.45 and partially with Codeium Windsurf rel. 1.2.2, both using Anthropic Claude 3.5 Sonnet as LLM.
+To create the development plan, the initial specifications were improved using ChatGPT o1.
 
 ### External Documentation
+
 Although these tools already had web search capabilities at the time, the development of this project assumed that Thunderbird documentation was not publicly available, as in the case of a closed-source project.
 For this reason, the "ThunderbirdDocScraper.py" script in the "utils" folder was used to download Thunderbird documentation in markdown format and made available to Cursor within the "_Docs\thunderbird_docs" folder.
 
@@ -87,7 +170,7 @@ These specifications were then used to create the development plan with ChatGPT 
 ```
 
 #### Development Plan with ChatGPT o1
-The development plan was created using ChapGPT o1 using the initial specifications as context.
+The development plan was created using ChatGPT o1 using the initial specifications as context.
 You can find the development plan in the file ["_Docs\DevelopmentPlan.md"](_Docs\DevelopmentPlan.md)
 
 ### Development with Cursor (and Windsurf)
@@ -99,10 +182,13 @@ The app is about a Mozilla Thunderbird extension and in @thunderbird_docs you ca
 Please, keep the code as simple as possible.
 ```
 
-The full list of prompt passed, step by step, to Cursor is available in the file ["_Docs\CursorPrompts.md"](_Docs\CursorPrompts.md)
+The full list of prompts passed, step by step, to Cursor is available in the file ["_Docs\Cursor-prompts-history.md"](_Docs\Cursor-prompts-history.md)
 
-### Cursor rules
+### Cursor Rules
 
-This project as been developed with setting the Cursor rules. The Cursor rules have been included later in the project as an example of how to use the Cursor rules.
-The Cursor rules have been created using Grok Deep Reaserch with the prompt described in the file ["_Docs\Create-rules-with-Grok.md"](_Docs\Create-rules-with-Grok.md)
+This project has been developed with Cursor rules configured. The Cursor rules have been included later in the project as an example of how to use the Cursor rules.
+The Cursor rules have been created using Grok Deep Research with the prompt described in the file ["_Docs\Create-rules-with-Grok.md"](_Docs\Create-rules-with-Grok.md)
 
+## License
+
+See [LICENSE](LICENSE) file for details.

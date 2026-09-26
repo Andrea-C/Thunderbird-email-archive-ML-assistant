@@ -77,10 +77,134 @@ th[data-sort][data-order="desc"]::after {
   margin-right: 10px;
 }
 
-/* Initial column widths */
+/* Initial column widths - order: checkbox, confidence, target, from, subject, date */
 .col-checkbox { width: 30px; }
-.col-from { width: 200px; }
-.col-subject { width: 300px; }
-.col-date { width: 150px; }
-.col-target { width: 200px; }
-.col-confidence { width: 100px; }
+.col-confidence { width: 80px; }
+.col-target { width: 180px; position: relative; }
+.col-from { width: 160px; }
+.col-subject { width: auto; }
+.col-date { width: 90px; }
+
+/* Target folder cell */
+.target-folder {
+  cursor: pointer;
+  position: relative;
+  overflow: visible !important;  /* Allow dropdown to overflow */
+}
+
+.target-folder:hover {
+  background-color: #f0f7ff;
+}
+
+.target-folder-display {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Manually set folder indicator */
+.target-folder.manually-set .target-folder-display {
+  color: #0066cc;
+  font-style: italic;
+}
+
+.target-folder.manually-set::before {
+  content: "✎ ";
+  color: #0066cc;
+  font-size: 0.85em;
+}
+
+/* Folder dropdown container */
+.folder-dropdown-container {
+  position: relative;
+  width: 100%;
+}
+
+.folder-dropdown-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #0066cc;
+  border-radius: 3px;
+  font-size: inherit;
+  font-family: inherit;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.folder-dropdown-input:focus {
+  border-color: #004499;
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+/* Dropdown list - use fixed positioning to escape table overflow */
+.folder-dropdown-list {
+  position: fixed;
+  width: 300px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #0066cc;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+}
+
+.folder-dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-dropdown-item:hover,
+.folder-dropdown-item.selected {
+  background-color: #e6f0ff;
+}
+
+.folder-dropdown-item.no-results {
+  color: #999;
+  font-style: italic;
+  cursor: default;
+}
+
+.folder-dropdown-item.no-results:hover {
+  background-color: transparent;
+}
+
+.folder-dropdown-item strong {
+  color: #0066cc;
+  font-weight: bold;
+}
+
+/* Email Preview Icon and Tooltip */
+.preview-icon {
+  cursor: pointer;
+  opacity: 0.6;
+  font-size: 0.9em;
+  margin-right: 6px;
+  transition: opacity 0.15s;
+}
+
+.preview-icon:hover {
+  opacity: 1;
+}
+
+.email-preview-tooltip {
+  position: fixed;
+  width: 450px;
+  max-height: 350px;
+  padding: 14px 18px;
+  background: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: #333;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  z-index: 10000;
+}

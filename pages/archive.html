@@ -96,16 +96,16 @@
       font-style: italic;
     }
     
-    /* Column widths */
+    /* Column widths - order: checkbox, confidence, target, from, subject, date */
     .col-checkbox { 
       width: 40px;
       padding-right: 20px;
     }
+    .col-confidence { width: 10%; }
+    .col-target { width: 20%; }
+    .col-from { width: 18%; }
+    .col-subject { width: 40%; }
     .col-date { width: 12%; }
-    .col-from { width: 20%; }
-    .col-subject { width: 30%; }
-    .col-confidence { width: 13%; }
-    .col-target { width: 25%; }
     
     /* Confidence value styling */
     .confidence-value {
@@ -138,7 +138,23 @@
     }
 
     .account-section select {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+
+    #accountSelect {
+      flex: 2;
+    }
+
+    #algorithmSelect {
       flex: 1;
+      min-width: 150px;
+    }
+
+    #algorithmSelect:disabled {
+      background: #f5f5f5;
+      color: #999;
     }
 
     .refresh-button {
@@ -169,6 +185,9 @@
     <select id="accountSelect">
       <option value="">Select Account</option>
     </select>
+    <select id="algorithmSelect" disabled>
+      <option value="">Select Algorithm</option>
+    </select>
     <button id="refreshAccounts" class="refresh-button" title="Refresh account list">↻</button>
   </div>
   
@@ -188,11 +207,11 @@
     <thead>
       <tr>
         <th class="col-checkbox"><input type="checkbox" id="selectAll"></th>
-        <th class="col-date" data-sort="date">Date</th>
-        <th class="col-from" data-sort="from">From</th>
-        <th class="col-subject" data-sort="subject">Subject</th>
         <th class="col-confidence" data-sort="confidence">Confidence</th>
         <th class="col-target" data-sort="target">Target Folder</th>
+        <th class="col-from" data-sort="from">From</th>
+        <th class="col-subject" data-sort="subject">Subject</th>
+        <th class="col-date sort-desc" data-sort="date" data-order="desc">Date</th>
       </tr>
     </thead>
     <tbody id="messageList">
