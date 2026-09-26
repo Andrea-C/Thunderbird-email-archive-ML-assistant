@@ -217,10 +217,11 @@ async function analyzeFolder() {
     // Classify each message
     showStatus(`Classifying ${allMessages.length} messages...`, 'info');
     emails = [];
+    let classifiedCount = 0;
     
-    for (let i = 0; i < allMessages.length; i++) {
-      const message = allMessages[i];
-      
+    // Classify in parallel (body models need one getFull() per message);
+    // results keep the folder order, failed messages become null
+    const results = await background.emailArchive.mapWithConcurrency(allMessages, background.emailArchive.BODY_FETCH_CONCURRENCY, async (message) => {
       try {
         const messageData = {
           id: message.id,
@@ -239,23 +240,26 @@ async function analyzeFolder() {
           currentAlgorithm
         );
         
-        emails.push({
+        return {
           ...messageData,
           currentFolder: folderPath,
           suggestedFolder: prediction.folder,
           confidence: prediction.confidence,
           isMisplaced: prediction.folder !== folderPath,
           selected: false
-        });
-        
-        // Update progress every 50 messages
-        if (i % 50 === 0) {
-          showStatus(`Classifying: ${i + 1} / ${allMessages.length}`, 'info');
-        }
+        };
       } catch (err) {
         console.warn('Error classifying message:', message.id, err);
+        return null;
+      } finally {
+        // Update progress every 50 messages
+        classifiedCount++;
+        if (classifiedCount % 50 === 0) {
+          showStatus(`Classifying: ${classifiedCount} / ${allMessages.length}`, 'info');
+        }
       }
-    }
+    });
+    emails = results.filter(Boolean);
     
     showStatus(`Analysis complete. Found ${emails.filter(e => e.isMisplaced).length} potential misplacements.`, 'success');
     updateStats();

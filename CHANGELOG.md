@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Parallel classification**: Archive and Review tabs classify 8 messages at a time (body models need one `getFull()` per message; sequential classification of 564 Inbox messages took ~3 minutes). Progress shown as "Classifying: n / total". Concurrent calls share a single model load.
 - **Tokenizer** ignores pure numbers (order IDs, dates, amounts) and tokens longer than 40 characters, to keep the vocabulary manageable with bodies.
 
 - **Extension renamed** to "Email Archive ML Assistant"

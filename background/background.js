@@ -27,7 +27,7 @@ const FEATURE_SETS = {
 };
 
 const BODY_MAX_CHARS = 2000;        // body text kept per message after cleaning
-const BODY_FETCH_CONCURRENCY = 8;   // parallel getFull() calls during training
+const BODY_FETCH_CONCURRENCY = 8;   // parallel getFull() calls (training and classification)
 const MAX_TOKEN_LENGTH = 40;
 
 // ============================================================================
@@ -763,6 +763,7 @@ function classifierFromJSON(json) {
 // Initialize models map to cache loaded models
 // Key format: accountId_algorithmType
 const loadedModels = new Map();
+const loadingModels = new Map();  // cacheKey -> Promise of an in-flight load
 
 // Get model storage key
 function getModelKey(accountId, algorithmType) {
@@ -804,10 +805,25 @@ async function loadModel(accountId, algorithmType = null) {
   
   // Check cache first
   if (loadedModels.has(cacheKey)) {
-    console.log(`Loading model from cache: ${cacheKey}`);
     return loadedModels.get(cacheKey);
   }
+  
+  // Parallel classification calls share one in-flight load instead of each
+  // reading and parsing the (possibly multi-MB) model
+  if (loadingModels.has(cacheKey)) {
+    return loadingModels.get(cacheKey);
+  }
+  const loading = loadModelFromStorage(accountId, algorithmType, cacheKey);
+  loadingModels.set(cacheKey, loading);
+  try {
+    return await loading;
+  } finally {
+    loadingModels.delete(cacheKey);
+  }
+}
 
+// Read, parse and cache a model (called by loadModel only)
+async function loadModelFromStorage(accountId, algorithmType, cacheKey) {
   // Load from storage
   const modelKey = getModelKey(accountId, algorithmType);
   const modelData = await browser.storage.local.get(modelKey);
@@ -1579,6 +1595,8 @@ window.emailArchive = {
   
   // Classification
   classifyMessage,
+  mapWithConcurrency,
+  BODY_FETCH_CONCURRENCY,
   moveMessages,
   
   // Folder helpers

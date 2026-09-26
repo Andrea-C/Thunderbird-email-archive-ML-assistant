@@ -851,15 +851,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error(`No ${getAlgorithmDisplayName(currentAlgorithm)} model found for this account`);
       }
       
-      // Classify selected messages using the selected algorithm
+      // Rows to classify: checked, and not manually set (don't overwrite
+      // the user's choice)
+      const indexesToClassify = [];
       for (let index = 0; index < messages.length; index++) {
         const checkbox = rows[index].querySelector('input[type="checkbox"]');
-        if (!checkbox || !checkbox.checked) continue;
-        
+        if (checkbox && checkbox.checked && !messages[index].manuallySet) {
+          indexesToClassify.push(index);
+        }
+      }
+      
+      // Classify in parallel: with body models each message needs a
+      // getFull() call, which dominates the time
+      let classifiedCount = 0;
+      await background.emailArchive.mapWithConcurrency(indexesToClassify, background.emailArchive.BODY_FETCH_CONCURRENCY, async (index) => {
         const message = messages[index];
-        
-        // Skip if manually set - don't overwrite user's choice
-        if (message.manuallySet) continue;
         
         try {
           // Pass the selected algorithm to classifyMessage
@@ -897,7 +903,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           targetCell.innerHTML = '<span class="target-folder-display">Classification failed</span>';
           targetCell.classList.add('error');
         }
-      }
+        
+        classifiedCount++;
+        status.textContent = `Classifying: ${classifiedCount} / ${indexesToClassify.length}`;
+      });
       
       status.textContent = 'Classification complete.';
       status.className = 'success';
