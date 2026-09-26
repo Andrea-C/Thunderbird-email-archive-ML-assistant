@@ -14,6 +14,11 @@ function getAlgorithmDisplayName(algorithmType) {
   }
 }
 
+// Get display name of a model's feature set
+function getFeaturesDisplayName(features) {
+  return features === 'headers+body' ? 'sender + subject + body' : 'sender + subject';
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Get DOM elements
   const accountSelect = document.getElementById('accountSelect');
@@ -91,6 +96,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const algorithmSpan = document.createElement('span');
           algorithmSpan.className = 'model-algorithm';
           algorithmSpan.textContent = getAlgorithmDisplayName(algorithmType);
+          
+          // Show which features the model was trained with
+          const meta = await background.emailArchive.getModelMeta(accountId, algorithmType);
+          algorithmSpan.textContent += ` · ${getFeaturesDisplayName(meta.features)}`;
+          if (meta.trainedAt) {
+            algorithmSpan.textContent += ` · ${meta.messagesUsed} msgs · ${new Date(meta.trainedAt).toLocaleString()}`;
+          }
           
           infoDiv.appendChild(nameSpan);
           infoDiv.appendChild(algorithmSpan);
@@ -295,15 +307,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Save current folder selection
       await background.emailArchive.saveFolderStructure(currentAccount.id, selectedFolders);
       
-      // Train the model with selected algorithm
+      // Train the model with selected algorithm and options
+      const includeBody = document.getElementById('includeBody').checked;
       const result = await background.emailArchive.trainModel(
         currentAccount, 
         selectedFolders.map(f => f.path),
-        algorithmType
+        algorithmType,
+        { includeBody }
       );
       
       if (result.success) {
-        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName}.`;
+        status.textContent = `Training complete! Processed ${result.messagesProcessed} messages using ${algorithmName} (${getFeaturesDisplayName(result.features)}).`;
         status.className = 'success';
         
         // Update the models list

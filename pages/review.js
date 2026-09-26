@@ -222,21 +222,19 @@ async function analyzeFolder() {
       const message = allMessages[i];
       
       try {
-        // Get full message for classification
-        const fullMessage = await browser.messages.getFull(message.id);
-        const body = extractBodyText(fullMessage);
-        
         const messageData = {
           id: message.id,
           author: message.author || '',
           subject: message.subject || '(No Subject)',
-          date: new Date(message.date),
-          body: body
+          date: new Date(message.date)
         };
         
-        // Classify the message
+        // Classify the message (the background reads the body if the model
+        // was trained with it)
+        // Pass the raw subject: '(No Subject)' is a display placeholder
+        // that training never sees
         const prediction = await background.emailArchive.classifyMessage(
-          messageData, 
+          { ...messageData, subject: message.subject || '' }, 
           accountId, 
           currentAlgorithm
         );
@@ -283,29 +281,6 @@ function findFolderByPath(folders, targetPath) {
     }
   }
   return null;
-}
-
-// Extract body text from full message
-function extractBodyText(fullMessage) {
-  if (!fullMessage || !fullMessage.parts) {
-    return '';
-  }
-  
-  let text = '';
-  
-  function extractFromParts(parts) {
-    for (const part of parts) {
-      if (part.contentType === 'text/plain' && part.body) {
-        text += part.body + ' ';
-      }
-      if (part.parts) {
-        extractFromParts(part.parts);
-      }
-    }
-  }
-  
-  extractFromParts(fullMessage.parts);
-  return text.trim();
 }
 
 // Update statistics

@@ -23,10 +23,11 @@ Thunderbird extension "Email Archive ML Assistant": learns from each account's a
 | done | Claude | R3-1 Commit 2.0-beta, tag, branch `rel-3`, rename + version bump |
 | todo | Claude | R3-2 Training date filter (default 18 months) |
 | todo | Claude | R3-3 Persistent "exclude from training" per folder |
-| todo | Claude | R3-4 Fix training/classification feature asymmetry (body default) |
+| done | Claude | R3-4 Fix training/classification feature asymmetry (body default) |
 | todo | Claude | R3-5 Hold-out evaluation report |
 | todo | Claude | R3-6 Sender-priority rule |
 | todo | Claude | R3-7 Shift+click range selection |
 | todo | Claude | R3-8 "Select ≥ threshold" + group by target folder |
 | todo | Claude | R3-9 Sender→folder rule export (MD/CSV) |
+| todo | PM (Andrea) | Retrain yahoo.it with body (TF-IDF NB), report time, model size (console "Saved model … MB"), errors |
 | todo | PM (Andrea) | Test each build in Thunderbird; confirm success criteria (≥95% precision above 80% threshold, ≥60% coverage) |

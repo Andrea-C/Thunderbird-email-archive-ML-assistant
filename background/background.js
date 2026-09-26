@@ -19,6 +19,17 @@ const ALGORITHM_TYPES = {
   SVM: 'svm'
 };
 
+// Feature sets a model can be trained with (stored in model metadata).
+// Classification always uses the feature set the model was trained with.
+const FEATURE_SETS = {
+  HEADERS: 'headers',            // sender + subject
+  HEADERS_BODY: 'headers+body'   // sender + subject + cleaned body text
+};
+
+const BODY_MAX_CHARS = 2000;        // body text kept per message after cleaning
+const BODY_FETCH_CONCURRENCY = 8;   // parallel getFull() calls during training
+const MAX_TOKEN_LENGTH = 40;
+
 // ============================================================================
 // BASE CLASSIFIER - Shared tokenization logic
 // ============================================================================
@@ -40,7 +51,10 @@ class BaseClassifier {
     const words = text.toLowerCase()
       .replace(/[^a-z0-9@._+-\s]/g, ' ')
       .split(/\s+/)
-      .filter(word => word.length > 2);
+      // Skip pure numbers (order IDs, dates, amounts) and very long tokens
+      // (URL fragments, encoded strings): with the body in training they only
+      // inflate the vocabulary.
+      .filter(word => word.length > 2 && word.length <= MAX_TOKEN_LENGTH && !/^[0-9.+-]+$/.test(word));
     
     // Combine all features
     return [...new Set([...words, ...emails, ...domains])];
@@ -755,9 +769,24 @@ function getModelKey(accountId, algorithmType) {
   return `model_${accountId}_${algorithmType}`;
 }
 
+// Get model metadata storage key (kept separate from the model so the
+// Trained Models list can read it without parsing the whole model).
+// Note: must not start with 'model_' (that prefix identifies models).
+function getModelMetaKey(accountId, algorithmType) {
+  return `modelMeta_${accountId}_${algorithmType}`;
+}
+
 // Get cache key
 function getCacheKey(accountId, algorithmType) {
   return `${accountId}_${algorithmType}`;
+}
+
+// Get metadata of a trained model. Models trained before rel. 3 have no
+// metadata: they were effectively trained on headers only.
+async function getModelMeta(accountId, algorithmType) {
+  const metaKey = getModelMetaKey(accountId, algorithmType);
+  const data = await browser.storage.local.get(metaKey);
+  return data[metaKey] || { features: FEATURE_SETS.HEADERS, legacy: true };
 }
 
 // Load model for an account with specific algorithm
@@ -790,28 +819,32 @@ async function loadModel(accountId, algorithmType = null) {
   // Parse and use factory to create correct classifier type
   const json = JSON.parse(modelData[modelKey]);
   const classifier = classifierFromJSON(json);
-  
-  console.log(`Loaded model from storage: ${modelKey}, algorithm: ${classifier.algorithmType}`);
+  classifier.meta = await getModelMeta(accountId, algorithmType);
+
+  console.log(`Loaded model from storage: ${modelKey}, algorithm: ${classifier.algorithmType}, features: ${classifier.meta.features}`);
   
   loadedModels.set(cacheKey, classifier);
   return classifier;
 }
 
-// Save model for an account
-async function saveModel(accountId, classifier) {
+// Save model (and its metadata) for an account
+async function saveModel(accountId, classifier, meta) {
   const algorithmType = classifier.algorithmType;
   const modelKey = getModelKey(accountId, algorithmType);
   const cacheKey = getCacheKey(accountId, algorithmType);
-  
+
   // Clear cache for this specific model (ensure fresh load next time)
   loadedModels.delete(cacheKey);
-  
+
   // Save to storage
+  const modelJson = JSON.stringify(classifier.toJSON());
+  classifier.meta = { ...meta, modelSizeBytes: modelJson.length };
   await browser.storage.local.set({
-    [modelKey]: JSON.stringify(classifier.toJSON())
+    [modelKey]: modelJson,
+    [getModelMetaKey(accountId, algorithmType)]: classifier.meta
   });
-  
-  console.log(`Saved model: ${modelKey}`);
+
+  console.log(`Saved model: ${modelKey} (${(modelJson.length / 1048576).toFixed(1)} MB, features: ${classifier.meta.features})`);
   
   // Update cache with fresh model
   loadedModels.set(cacheKey, classifier);
@@ -824,9 +857,9 @@ async function deleteModel(accountId, algorithmType = null) {
     const modelKey = getModelKey(accountId, algorithmType);
     const cacheKey = getCacheKey(accountId, algorithmType);
     
-    await browser.storage.local.remove(modelKey);
+    await browser.storage.local.remove([modelKey, getModelMetaKey(accountId, algorithmType)]);
     loadedModels.delete(cacheKey);
-    
+
     console.log(`Deleted model: ${modelKey}`);
   } else {
     // Delete all models for this account
@@ -835,7 +868,7 @@ async function deleteModel(accountId, algorithmType = null) {
       const modelKey = getModelKey(accountId, algo);
       const cacheKey = getCacheKey(accountId, algo);
       
-      await browser.storage.local.remove(modelKey);
+      await browser.storage.local.remove([modelKey, getModelMetaKey(accountId, algo)]);
       loadedModels.delete(cacheKey);
     }
     console.log(`Deleted all models for account: ${accountId}`);
@@ -1002,15 +1035,145 @@ async function openAssistant() {
 }
 
 // ============================================================================
+// MESSAGE TEXT - shared by training and classification so both always see
+// exactly the same features
+// ============================================================================
+
+// Convert HTML to plain text without executing anything (DOMParser does not
+// run scripts or load resources)
+function htmlToText(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Drop non-content and quoted replies (HTML quotes live in <blockquote> /
+  // Gmail's quote container, not in "> " lines)
+  doc.querySelectorAll('script, style, head, blockquote, .gmail_quote').forEach(el => el.remove());
+  if (!doc.body) return '';
+  // textContent adds no separators: turn <br> and block ends into newlines
+  // so words don't glue together and line-based cleaning still works
+  doc.body.querySelectorAll('br').forEach(el => el.replaceWith('\n'));
+  doc.body.querySelectorAll('p, div, li, tr, td, th, h1, h2, h3, h4, h5, h6, table, section, article')
+    .forEach(el => el.append('\n'));
+  return doc.body.textContent || '';
+}
+
+// True if a MIME part is an attachment (e.g. an attached .txt or .csv),
+// whose text must not be mistaken for the message body
+function isAttachmentPart(part) {
+  const disposition = (part.headers && part.headers['content-disposition'] || []).join(' ');
+  return Boolean(part.name) || /^\s*attachment/i.test(disposition);
+}
+
+// Extract body text from a getFull() message: prefer text/plain parts,
+// fall back to stripped text/html
+function extractBodyText(fullMessage) {
+  if (!fullMessage || !fullMessage.parts) return '';
+
+  let plainText = '';
+  let htmlText = '';
+
+  function extractFromParts(parts) {
+    for (const part of parts) {
+      if (isAttachmentPart(part)) continue;
+      if (part.contentType === 'text/plain' && part.body) {
+        plainText += part.body + '\n';
+      } else if (part.contentType === 'text/html' && part.body) {
+        htmlText += part.body + '\n';
+      }
+      if (part.parts) {
+        extractFromParts(part.parts);
+      }
+    }
+  }
+
+  extractFromParts(fullMessage.parts);
+
+  if (plainText.trim()) return plainText;
+  if (htmlText.trim()) return htmlToText(htmlText);
+  return '';
+}
+
+// Keep only the message's own text: drop quoted lines ("> ..."), stop at the
+// signature separator or at a reply header (the quoted older thread),
+// collapse whitespace and truncate to BODY_MAX_CHARS.
+// Forward headers are NOT a cut point: in a forward the forwarded content
+// (invoice, order, ...) is usually what identifies the folder.
+function cleanBodyText(text) {
+  // "On ... wrote:" / "Il ... ha scritto:" (also when Gmail wraps the
+  // attribution over two lines, so only the line end is matched), Outlook
+  // "-----Original Message-----" and its "______" separator line
+  const replyHeaderPattern = /((wrote|ha scritto):$|^-{2,}\s*(original message|messaggio originale)\s*-{2,}$|^_{10,}$)/i;
+  const forwardHeaderPattern = /^-{2,}\s*(forwarded message|messaggio inoltrato)\s*-{2,}$/i;
+  const keptLines = [];
+
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === '--') break;                      // signature separator "-- "
+    if (replyHeaderPattern.test(trimmed)) {           // start of quoted thread
+      // Wrapped attribution: its first half ("On Mon, ... John <") was
+      // already kept on the previous line
+      const previous = keptLines[keptLines.length - 1] || '';
+      if (!/^(on|il)\s/i.test(trimmed) && /^(on|il)\s/i.test(previous)) keptLines.pop();
+      break;
+    }
+    if (forwardHeaderPattern.test(trimmed)) continue; // keep forwarded content
+    if (trimmed.startsWith('>')) continue;            // quoted line
+    if (trimmed) keptLines.push(trimmed);
+  }
+
+  return keptLines.join(' ').replace(/\s+/g, ' ').trim().slice(0, BODY_MAX_CHARS);
+}
+
+// Fetch and clean the body of a message; returns '' on error so one bad
+// message never breaks training or classification
+async function getMessageBodyText(messageId) {
+  try {
+    const fullMessage = await browser.messages.getFull(messageId);
+    return cleanBodyText(extractBodyText(fullMessage));
+  } catch (error) {
+    console.warn(`Could not read body of message ${messageId}:`, error);
+    return '';
+  }
+}
+
+// Build the text the classifier sees for a message
+function buildMessageText(message, bodyText = '') {
+  return [message.author || '', message.subject || '', bodyText].join(' ').trim();
+}
+
+// Map items with an async function, at most `limit` calls in flight
+async function mapWithConcurrency(items, limit, asyncFn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await asyncFn(items[index]);
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(limit, items.length); i++) {
+    workers.push(runWorker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+// ============================================================================
 // TRAINING
 // ============================================================================
 
-// Training function - now accepts algorithm type
-async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TYPES.NAIVE_BAYES) {
+// Training function
+// options.includeBody (default true): train on sender + subject + body;
+// false trains on sender + subject only (much faster, no getFull() calls)
+async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TYPES.NAIVE_BAYES, options = {}) {
   try {
+    const includeBody = options.includeBody !== false;
+    const features = includeBody ? FEATURE_SETS.HEADERS_BODY : FEATURE_SETS.HEADERS;
+
     // Create classifier based on selected algorithm
     const classifier = createClassifier(algorithmType);
-    console.log(`Training with algorithm: ${algorithmType}`);
+    console.log(`Training with algorithm: ${algorithmType}, features: ${features}`);
     
     let totalFolders = selectedFolders.length;
     let processedFolders = 0;
@@ -1072,9 +1235,14 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       
       while (page) {
         if (page.messages && Array.isArray(page.messages)) {
-          for (const message of page.messages) {
+          // list() returns headers only: fetch the bodies of this page in parallel
+          const bodies = includeBody
+            ? await mapWithConcurrency(page.messages, BODY_FETCH_CONCURRENCY, m => getMessageBodyText(m.id))
+            : [];
+
+          for (const [messageIndex, message] of page.messages.entries()) {
             try {
-              const fullText = `${message.author || ''} ${message.subject || ''} ${message.body || ''}`;
+              const fullText = buildMessageText(message, bodies[messageIndex] || '');
               classifier.train(fullText, folderPath);
               processedMessages++;
               
@@ -1116,8 +1284,12 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
       classifier.finalizeTraining();
     }
     
-    // Save trained model
-    await saveModel(account.id, classifier);
+    // Save trained model with its metadata
+    await saveModel(account.id, classifier, {
+      features,
+      trainedAt: new Date().toISOString(),
+      messagesUsed: processedMessages
+    });
     
     // Save folder selection for future use
     await saveFolderStructure(account.id, selectedFolders);
@@ -1133,7 +1305,8 @@ async function trainModel(account, selectedFolders, algorithmType = ALGORITHM_TY
     return { 
       success: true, 
       messagesProcessed: processedMessages,
-      algorithm: algorithmType
+      algorithm: algorithmType,
+      features
     };
   } catch (error) {
     console.error('Training error:', error);
@@ -1245,14 +1418,15 @@ async function classifyMessage(message, accountId, algorithmType = null) {
     // Load the model (with specific algorithm if provided)
     const classifier = await loadModel(accountId, algorithmType);
     
-    console.log('Using algorithm:', classifier.algorithmType);
-    
-    // Get message text and classify
-    const fullText = [
-      message.author || '',
-      message.subject || '',
-      message.body?.plain || message.body || ''
-    ].join(' ').trim();
+    // Use the same feature set the model was trained with; the body is
+    // fetched and cleaned here exactly as in training
+    const features = classifier.meta?.features || FEATURE_SETS.HEADERS;
+    console.log('Using algorithm:', classifier.algorithmType, 'features:', features);
+
+    const bodyText = features === FEATURE_SETS.HEADERS_BODY
+      ? await getMessageBodyText(message.id)
+      : '';
+    const fullText = buildMessageText(message, bodyText);
     
     if (!fullText) {
       throw new Error('No text content available for classification');
@@ -1353,6 +1527,7 @@ window.emailArchive = {
   
   // Constants
   ALGORITHM_TYPES,
+  FEATURE_SETS,
   
   // Training
   trainModel,
@@ -1374,6 +1549,7 @@ window.emailArchive = {
   getTrainedAccounts,
   getTrainedAccountsWithAlgorithms,
   getAvailableModels,
+  getModelMeta,
   hasTrainedModel,
   deleteModel,
   getModelAlgorithm

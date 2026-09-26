@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0-beta] - Unreleased
 
+### Fixed
+
+- **Training never saw the message body** (R3-4): `messages.list()` returns headers only, so every model was trained on sender + subject, while the Review tab classified with the body. Training and classification now build the text with the same shared code.
+
+### Added
+
+- **Message body in training** (default on): Training tab option "Include message body". Bodies are fetched with `messages.getFull()` (8 in parallel), quoted replies/signatures are dropped (forwarded content is kept, text attachments are ignored, HTML-only mails are converted keeping word boundaries), text is truncated to 2,000 characters. Unchecking it trains on sender + subject only (fast).
+- **Model metadata** (`modelMeta_<accountId>_<algorithm>`): feature set, training date, messages used, model size. Shown in the Trained Models list. Classification always uses the feature set the model was trained with; models trained before 3.0 are treated as sender + subject.
+
 ### Changed
+
+- **Tokenizer** ignores pure numbers (order IDs, dates, amounts) and tokens longer than 40 characters, to keep the vocabulary manageable with bodies.
 
 - **Extension renamed** to "Email Archive ML Assistant"
 - **Version**: `manifest.json` now `version: 3.0.0` (Mozilla requires a purely numeric `version`; Thunderbird rejects `version_name`, so the beta status is tracked here and in git tags)
