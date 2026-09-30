@@ -11,7 +11,7 @@ Thunderbird WebExtension (Manifest v2, min TB 91) that trains one ML model per m
 
 ## Build and test
 - Build: `python utils/build_xpi.py`.
-- Test: only Andrea can run it in Thunderbird — install the .xpi, or Tools → Developer Tools → Debug Add-ons → Load Temporary Add-on (`manifest.json`). There are no automated tests; for pure logic (tokenizer, metrics) prefer small Node scripts under a scratch folder.
+- Test: only Andrea can run it in Thunderbird — install the .xpi, or Tools → Developer Tools → Debug Add-ons → Load Temporary Add-on (`manifest.json`). Automated tests: `node tests/node/test.js background/background.js` (Node vm + stubbed `browser` API; covers body cleaning, tokenizer, folder selection, training/metadata, evaluation, calibration, date filter). Extend them for every background change; UI code in `pages/` is only testable in Thunderbird.
 - Branches: `main` = last release (tag `v2.0.0-beta`); release work on `rel-3`, one R3-x item per commit.
 
 ## Conventions (from `.cursor/rules/*.mdc`)
